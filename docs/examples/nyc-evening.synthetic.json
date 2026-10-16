@@ -1,0 +1,130 @@
+{
+  "artifact_kind": "OFFLINE_FEASIBILITY_SPECIFICATION",
+  "synthetic": true,
+  "executed": false,
+  "notice": "All venues, IDs, facts and ordinal ranks below are authored synthetic data. Qloo returned none of them. This is an expected-behavior specification, not a recorded run.",
+  "scenario_assumptions": [
+    "A fictional user explicitly selected In the Mood for Love as a film anchor. The real user has not made that selection.",
+    "A fictional user confirmed a synthetic cafe/jazz concept. No real Qloo tag exists in this file or is asserted to exist.",
+    "New York, US and place-only are explicit synthetic hard constraints. Evening is context, not proof of opening hours."
+  ],
+  "input": {
+    "schema_revision": "tastegate.input.v0",
+    "preferences": [
+      { "id": "p1", "text": "Radiohead", "kind": "artist", "confirmed_anchor": "Radiohead" },
+      { "id": "p2", "text": "Wong Kar-wai films", "kind": "film_concept", "confirmed_anchor": "In the Mood for Love" },
+      { "id": "p3", "text": "Japanese jazz cafes", "kind": "tag_concept", "confirmed_anchor": "Synthetic reviewed cafe/jazz concept" }
+    ],
+    "task": "Audit AI-generated cultural recommendations for an evening in New York.",
+    "destination": "New York",
+    "constraints": [
+      { "id": "c1", "kind": "city", "value": "New York" },
+      { "id": "c2", "kind": "country", "value": "US" },
+      { "id": "c3", "kind": "entity_type", "value": "place" },
+      { "id": "c4", "kind": "max_items", "value": 3 }
+    ],
+    "recommendations": [
+      { "id": "original-1", "name": "SYNTHETIC Manhattan Listening Room", "address_hint": "Synthetic NYC hint", "claims": ["You are guaranteed to love this venue."] },
+      { "id": "original-2", "name": "SYNTHETIC Jersey Lounge", "address_hint": "Synthetic Jersey City hint", "claims": [] },
+      { "id": "original-3", "name": "SYNTHETIC Unresolved Cafe", "address_hint": null, "claims": [] }
+    ]
+  },
+  "synthetic_world": {
+    "preference_resolution": [
+      { "preference_id": "p1", "entity_id": "synthetic:artist-radiohead", "kind": "artist" },
+      { "preference_id": "p2", "entity_id": "synthetic:film-anchor", "kind": "movie" },
+      { "preference_id": "p3", "tag_id": "synthetic:tag-cafe-jazz", "kind": "tag" }
+    ],
+    "query_context": {
+      "preference_entity_ids": ["synthetic:artist-radiohead", "synthetic:film-anchor"],
+      "preference_tag_ids": ["synthetic:tag-cafe-jazz"],
+      "notice": "Authored signal context shared by both synthetic rankings; not real Qloo identifiers."
+    },
+    "entities": [
+      { "id": "synthetic:place-1", "city": "New York", "country": "US", "kind": "place" },
+      { "id": "synthetic:place-2", "city": "Jersey City", "country": "US", "kind": "place" },
+      { "id": "synthetic:place-4", "city": "New York", "country": "US", "kind": "place" }
+    ],
+    "original_ranking": ["synthetic:place-1", "synthetic:place-2"],
+    "discovery": ["synthetic:place-4"],
+    "final_ranking": ["synthetic:place-4", "synthetic:place-1"],
+    "unresolved_names": ["SYNTHETIC Unresolved Cafe"]
+  },
+  "expected_report": {
+    "schema_revision": "tastegate.report.v0",
+    "run_id": "fixture-nyc-evening-v0",
+    "source_mode": "fixture",
+    "input_ref": "/input",
+    "before_status": "BLOCKED",
+    "final_status": "UNKNOWN",
+    "completion": "partial",
+    "original_audits": [
+      {
+        "candidate_id": "original-1", "resolution": "resolved", "entity_id": "synthetic:place-1",
+        "hard_constraints": "pass", "evidence_coverage": "partial",
+        "cultural_relevance": { "query_ref": "e-original-rank", "ordinal_rank": 1 },
+        "explainability": "missing", "verdict": "REVIEW",
+        "findings": [
+          { "code": "SYNTHETIC_HARD_CHECKS_PASS", "category": "hard_constraint", "state": "pass", "evidence_refs": ["e-place-1", "e-input"], "explanation": "Authored city/country/type facts meet c1-c3 and the synthetic list meets maximum count c4." },
+          { "code": "UNSUPPORTED_PERSONAL_GUARANTEE", "category": "insufficient_evidence", "state": "unknown", "evidence_refs": ["e-original-rank"], "explanation": "A synthetic relative rank cannot establish that an individual will love a venue. The claim is unsubstantiated, not disproven." }
+        ]
+      },
+      {
+        "candidate_id": "original-2", "resolution": "resolved", "entity_id": "synthetic:place-2",
+        "hard_constraints": "fail", "evidence_coverage": "covered",
+        "cultural_relevance": { "query_ref": "e-original-rank", "ordinal_rank": 2 },
+        "explainability": "not_requested", "verdict": "BLOCKED",
+        "findings": [
+          { "code": "CITY_MISMATCH", "category": "hard_constraint", "state": "fail", "evidence_refs": ["e-place-2"], "explanation": "The authored synthetic city is Jersey City, conflicting with explicit New York constraint c1." }
+        ]
+      },
+      {
+        "candidate_id": "original-3", "resolution": "unresolved", "entity_id": null,
+        "hard_constraints": "unknown", "evidence_coverage": "missing", "cultural_relevance": null,
+        "explainability": "not_requested", "verdict": "UNKNOWN",
+        "findings": [
+          { "code": "UNRESOLVED_ENTITY", "category": "uncertainty", "state": "unknown", "evidence_refs": ["e-empty"], "explanation": "Synthetic lookup has no match; this does not prove that a real-world venue is nonexistent." }
+        ]
+      }
+    ],
+    "repairs": [
+      {
+        "replaces": "original-2", "replacement_candidate_id": "replacement-1",
+        "discovery_evidence_refs": ["e-discovery"],
+        "revalidation": {
+          "candidate_id": "replacement-1", "resolution": "resolved", "entity_id": "synthetic:place-4",
+          "hard_constraints": "pass", "evidence_coverage": "covered",
+          "cultural_relevance": { "query_ref": "e-final-rank", "ordinal_rank": 1 },
+          "explainability": "missing", "verdict": "PASS",
+          "findings": [
+            { "code": "SYNTHETIC_REVALIDATION_ONLY", "category": "relative_relevance", "state": "pass", "evidence_refs": ["e-place-4", "e-final-rank"], "explanation": "The fictional replacement passes the authored city/country/type facts and appears in a common-set synthetic ranking. This is no live verification or operational guarantee." }
+          ]
+        },
+        "accepted": true
+      }
+    ],
+    "final_candidate_ids": ["original-1", "replacement-1"],
+    "evidence": [
+      { "evidence_id": "e-input", "source_mode": "fixture", "provider": "synthetic", "operation": "input", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/input", "entity_ids": [], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC USER INPUT; NOT REAL CONSENT"] },
+      { "evidence_id": "e-preferences", "source_mode": "fixture", "provider": "synthetic", "operation": "entity_lookup", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/synthetic_world/preference_resolution", "entity_ids": ["synthetic:artist-radiohead", "synthetic:film-anchor"], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC DATA; TAG AND ENTITY IDS ARE NOT QLOO IDS"] },
+      { "evidence_id": "e-place-1", "source_mode": "fixture", "provider": "synthetic", "operation": "entity_lookup", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/synthetic_world/entities/0", "entity_ids": ["synthetic:place-1"], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC DATA"] },
+      { "evidence_id": "e-place-2", "source_mode": "fixture", "provider": "synthetic", "operation": "entity_lookup", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/synthetic_world/entities/1", "entity_ids": ["synthetic:place-2"], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC DATA"] },
+      { "evidence_id": "e-original-rank", "source_mode": "fixture", "provider": "synthetic", "operation": "insights", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/synthetic_world/original_ranking", "entity_ids": ["synthetic:place-1", "synthetic:place-2"], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC DATA", "NO QLOO AFFINITY VALUE ASSERTED"] },
+      { "evidence_id": "e-empty", "source_mode": "fixture", "provider": "synthetic", "operation": "entity_lookup", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/synthetic_world/unresolved_names", "entity_ids": [], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC DATA"] },
+      { "evidence_id": "e-discovery", "source_mode": "fixture", "provider": "synthetic", "operation": "insights", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/synthetic_world/discovery", "entity_ids": ["synthetic:place-4"], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC DATA"] },
+      { "evidence_id": "e-place-4", "source_mode": "fixture", "provider": "synthetic", "operation": "entity_lookup", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/synthetic_world/entities/2", "entity_ids": ["synthetic:place-4"], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC DATA"] },
+      { "evidence_id": "e-final-rank", "source_mode": "fixture", "provider": "synthetic", "operation": "insights", "call_id": null, "upstream_request_id": null, "retrieved_at": null, "query_fingerprint": null, "pointer": "/synthetic_world/final_ranking", "entity_ids": ["synthetic:place-4", "synthetic:place-1"], "cache_hit": false, "fetched_at": null, "warnings": ["SYNTHETIC DATA", "NO QLOO AFFINITY VALUE ASSERTED"] }
+    ],
+    "unresolved_preferences": [],
+    "limitations": [
+      "Expected behavior only: no code ran this audit and no provider call was made.",
+      "Original-3 remains unresolved and its slot is retained as missing, preventing a complete PASS.",
+      "Original-1's personal guarantee remains unsupported, despite a synthetic relative rank.",
+      "Synthetic user selections are not real user confirmations or Runtime approval/authorization.",
+      "Explainability, opening tonight, live music, price and availability are not verified.",
+      "Relative cultural affinity is not an individual's preference probability."
+    ],
+    "usage": { "qloo_dispatches": 0, "llm_dispatches": 0, "elapsed_ms": null },
+    "archive": { "status": "not_requested", "action_id": null, "receipt_ref": null }
+  }
+}
