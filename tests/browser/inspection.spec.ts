@@ -15,6 +15,10 @@ test("browser performs actual offline audit, shows residual uncertainty and save
   await page.getByRole("button", { name: "Run synthetic audit" }).click();
   const response = await responsePromise; expect(response.status()).toBe(200);
   const report = AuditReportSchema.parse(await response.json());
+  // The test server deliberately has a fake live configuration; the inspector stays fixture-only.
+  expect(report.source_mode).toBe("fixture");
+  expect(JSON.stringify(report)).not.toContain("local-browser-canary-not-a-provider-key");
+  expect(await page.content()).not.toContain("local-browser-canary-not-a-provider-key");
   await expect(page.getByRole("status")).toHaveText("Final status: UNKNOWN. Completion: partial.");
   await expect(page.getByText("Accepted after revalidation", { exact: false })).toBeVisible();
   await page.getByText(/Inspect generated evidence JSON/).click();

@@ -15,7 +15,8 @@ export interface FixtureQlooAdapter {
   discoverPlaces(request: DiscoveryRequest, context: CallContext): Promise<FixtureObservation>;
 }
 
-// Future raw transport port only: no implementation, parser, URL selection or key loading.
+// Future semantic adapter port. Phase 1B adds isolated offline transport checks and a
+// permanently disabled live implementation; no verified response mapper exists.
 // `unknown` deliberately avoids promising an unobserved live response shape.
 export interface LiveQlooAdapter {
   readonly mode: "live";
