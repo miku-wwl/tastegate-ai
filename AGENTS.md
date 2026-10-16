@@ -1,5 +1,19 @@
 # Hackathon Agent Instructions — Reuse Agentic Intent Gate
 
+## Phase 1A scoped exception — offline core
+
+Human-approved Phase 1A authorizes a minimal Next.js/TypeScript application, strict domain contracts, authored synthetic fixtures, a bounded read-only Audit -> Repair -> Revalidate workflow and focused offline tests. It does not authorize optional Runtime archive integration.
+
+For Phase 1A only, the Runtime dependency/install/lockfile verification in **Dependency Setup**, the installed API/example inspection in **Public Integration Entry Point** and **Agent Work Protocol** items 2-3, and the Runtime-specific **Acceptance Criteria** are deferred until a separately approved phase actually integrates a Runtime SIDE_EFFECT tool. No Python dependency/environment, archive tool or Runtime execution mechanism is required or implemented in Phase 1A.
+
+The product-owned finite read-only audit workflow must not copy, reimplement, monkeypatch or bypass the Runtime's approval, authorization, claim, fencing, idempotency or receipt mechanisms. Any later approved Runtime integration must use the existing exact commit pin and all existing safety and installed-package acceptance requirements.
+
+Live Qloo execution remains blocked without the event key and separate phase authorization. Fixture data must stay visibly synthetic; no unverified live response assumptions or automatic live-to-fixture fallback may be introduced. Preserve the frozen strategy baseline.
+
+No optional archive implementation, public deployment, commit, push, release, submission or automatic next-phase transition is authorized by Phase 1A. Obtain owner approval before adding the intended MIT license.
+
+This explicit scoped exception takes precedence over conflicting Runtime-first ordering only within Phase 1A. All other instructions below remain in effect.
+
 ## Purpose
 
 This repository is a **Hackathon application that consumes an existing Python Agent Runtime**. Build the competition-specific product, **not another agent execution framework**.
