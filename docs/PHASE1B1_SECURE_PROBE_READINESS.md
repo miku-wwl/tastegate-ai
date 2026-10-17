@@ -1,5 +1,7 @@
 # Phase 1B.1 — Secure raw probe readiness
 
+> Historical preparation report. The owner's Phase 1B.2 correction supersedes the P01-only revocation/replacement, mandatory numeric entitlement and fixed single-attempt policies below. See [current execution review](PHASE1B2_EXECUTION_REVIEW.md). Historical commands, results and unconfirmed facts are preserved; none establishes a live request or completed rotation.
+
 2026-10-17, Pacific/Auckland. **CONDITIONAL PASS for offline preparation; live execution BLOCKED.** Base HEAD `439a51e3626dbd761ab4ff1c0e11b12275c9d6bb`; initial worktree clean. Current changes are uncommitted and identified by the review ZIP source manifest. No Qloo API request, key retrieval, deployment, Devpost action, Runtime archive, commit or push was performed in this phase.
 
 ## Credential incident and local security review

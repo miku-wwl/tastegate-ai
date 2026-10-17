@@ -1,4 +1,8 @@
-# Phase 1B Live probe plan — NOT EXECUTED
+# Phase 1B Live probe plan — P01 executed; remaining probes NOT EXECUTED
+
+> **P01 execution update:** exactly one separately approved Radiohead search returned HTTP 200 on 2026-10-17; see [actual P01 report](PHASE1B2_P01_LIVE_PROBE_REPORT.md). The remaining campaign below is historical proposed procedure and has not executed. P02-P10 remain unapproved; no automatic continuation follows this result.
+
+> **2026-10-17 P01-only amendment:** the owner's Phase 1B.2 request allows consideration of the originally issued event credential after explicit exposure-risk acknowledgment and fresh one-request approval. Unknown participant quota/rate/concurrency/expiry may be recorded as `UNKNOWN`; no invented numbers or rotation claims are required. The local allowance remains one request per separately approved attempt, with prior records/accounting retained. Private caching is permitted by the rechecked event guide. The execution review supersedes conflicting P01 preconditions/stop wording below; [current controls and evidence](PHASE1B2_EXECUTION_REVIEW.md) apply. P02-P10 remain unapproved and require independent review of the original campaign gates. No automatic expansion of this exception is authorized.
 
 2026-10-16. **All P01-P10: BLOCKED pending event access and separate human authorization.** This is a proposed procedure, not a runnable live adapter or evidence of provider success. The application remains fixture-only. No key is requested by this document.
 

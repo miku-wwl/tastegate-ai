@@ -2,35 +2,42 @@ import https from "node:https";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QlooServerConfig } from "../src/qloo/server-config";
-import { blockedP01, P01_PROFILE, P01SummarySchema, validP01Checkpoint } from "../src/qloo/p01-profile";
+import { blockedP01, P01_PROFILE, P01CheckpointSchema, P01SummarySchema, validP01Checkpoint } from "../src/qloo/p01-profile";
 import { createLocalP01Runner, executeLiveP01, type LocalProbeTransport, type ProbeStore, type ProbeRequest } from "../src/qloo/p01-runner";
-import { createPrivateP01Store, liveP01FromPrivateCheckpoint } from "../src/qloo/p01-private-store";
+import { createPrivateP01Store, inspectPrivateP01Ledger, liveP01FromPrivateCheckpoint } from "../src/qloo/p01-private-store";
 import { AuditReportSchema } from "../src/domain/report-schema";
 
 const credential = "test-only-probe-credential-never-issued";
+let testBootstrapArgs: string[];
 function checkpoint() {
   const now = Date.now();
-  return { revision: "tastegate.p01.checkpoint.v1", profile_revision: P01_PROFILE.revision,
-    exposed_key_revoked: true, replacement_installed_privately: true, host_and_header_reviewed: true,
+  return P01CheckpointSchema.parse({ revision: "tastegate.p01.checkpoint.v2", profile_revision: P01_PROFILE.revision,
+    attempt_id: randomUUID(), previous_attempt_id: null, prior_reserved_attempts: 0, prior_attempts_reviewed: true,
+    credential_exposure_risk_acknowledged: true, credential_basis: "ORIGINALLY_ISSUED_EVENT_KEY", unknown_entitlements_acknowledged: true,
+    host_and_header_reviewed: true, request_shape_reviewed: true,
     usage_rights_confirmed: true, private_capture_permitted: true, private_directory_access_reviewed: true,
-    quota: { remaining_calls: 8, rate_limit_per_minute: 1, concurrency_limit: 1, key_expires_at: new Date(now + 86_400_000).toISOString() },
-    approval: "APPROVE_P01_ONLY", max_dispatches: 1, approved_at: new Date(now).toISOString(), approval_expires_at: new Date(now + 60_000).toISOString() };
+    quota: { remaining_calls: "UNKNOWN", rate_limit_per_minute: "UNKNOWN", concurrency_limit: "UNKNOWN", key_expires_at: "UNKNOWN" },
+    approval: "APPROVE_P01_ONLY", max_dispatches: 1, approved_at: new Date(now).toISOString(), approval_expires_at: new Date(now + 60_000).toISOString() });
 }
 const config = (timeout = "4000") => QlooServerConfig.load({ QLOO_MODE: "live", QLOO_API_KEY: credential, QLOO_REQUEST_TIMEOUT_MS: timeout });
 function memoryStore() {
   return { reserve: vi.fn(async () => {}), saveRaw: vi.fn(async (_bytes: Uint8Array) => {}), saveSummary: vi.fn(async (_summary: unknown) => {}) } satisfies ProbeStore;
 }
-function local(send: LocalProbeTransport["send"] = async () => Response.json({ authored_test_body: true }), timeout = "4000", store = memoryStore()) {
+function local(send: LocalProbeTransport["send"] = async () => Response.json({ authored_test_body: true }), timeout = "4000", store: ProbeStore = memoryStore()) {
   const request = vi.fn(send);
   return { runner: createLocalP01Runner(config(timeout), { kind: "local-test-double", send: request }, store), request, store };
 }
 beforeEach(() => {
+  // Unit doubles do not execute Vitest's trusted --require bootstrap as a live CLI.
+  testBootstrapArgs = process.execArgv; process.execArgv = [];
   vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("External network forbidden"));
   vi.spyOn(https, "request").mockImplementation(() => { throw new Error("External network forbidden"); });
 });
 afterEach(() => {
+  process.execArgv = testBootstrapArgs;
   expect(globalThis.fetch).not.toHaveBeenCalled(); expect(https.request).not.toHaveBeenCalled();
   vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals();
 });
@@ -40,14 +47,14 @@ describe("P01 explicit checkpoint and exact public-cultural profile", () => {
     const t = local(); expect(await t.runner.run()).toEqual(blockedP01());
     expect(t.request).not.toHaveBeenCalled(); expect(t.store.reserve).not.toHaveBeenCalled();
   });
-  it.each(["exposed_key_revoked", "replacement_installed_privately", "host_and_header_reviewed", "usage_rights_confirmed", "private_capture_permitted", "private_directory_access_reviewed"])("blocks missing/exposed/unconfirmed prerequisite %s", async (field) => {
+  it.each(["credential_exposure_risk_acknowledged", "unknown_entitlements_acknowledged", "prior_attempts_reviewed", "host_and_header_reviewed", "request_shape_reviewed", "usage_rights_confirmed", "private_capture_permitted", "private_directory_access_reviewed"])("blocks unacknowledged prerequisite %s", async (field) => {
     const t = local(); const c = { ...checkpoint(), [field]: false };
     expect((await t.runner.run({ checkpoint: c })).status).toBe("BLOCKED"); expect(t.request).not.toHaveBeenCalled();
   });
   it.each([undefined, {}, { approval: "APPROVE_P01_ONLY" }, { QLOO_LIVE_VERIFIED: true }, { credential_status: "exposed" }])("a partial checkpoint/flag cannot enable dispatch", async (c) => {
     const t = local(); expect((await t.runner.run({ checkpoint: c })).dispatches).toBe(0); expect(t.request).not.toHaveBeenCalled();
   });
-  it("requires numeric quota, expiry and short-lived approval without extra authority fields", async () => {
+  it("accepts explicit UNKNOWN entitlements, rejects invented/invalid values and requires fresh bounded approval", async () => {
     const now = Date.now();
     for (const c of [
       { ...checkpoint(), quota: { ...checkpoint().quota, remaining_calls: 0 } },
@@ -57,8 +64,13 @@ describe("P01 explicit checkpoint and exact public-cultural profile", () => {
       { ...checkpoint(), approved_at: new Date(now + 10000).toISOString() },
       { ...checkpoint(), approval_expires_at: new Date(now + 16 * 60_000).toISOString() },
       { ...checkpoint(), max_dispatches: 8 }, { ...checkpoint(), approval: "APPROVE_ALL" }, { ...checkpoint(), api_key: credential },
+      { ...checkpoint(), revision: "tastegate.p01.checkpoint.v1" }, { ...checkpoint(), exposed_key_revoked: true },
+      { ...checkpoint(), prior_reserved_attempts: 1 }, { ...checkpoint(), attempt_id: "arbitrary-path" },
     ]) expect(validP01Checkpoint(c)).toBe(false);
     expect(validP01Checkpoint(checkpoint())).toBe(true);
+    expect(checkpoint()).not.toHaveProperty("exposed_key_revoked");
+    expect(validP01Checkpoint({ ...checkpoint(), quota: { remaining_calls: 1, rate_limit_per_minute: 1, concurrency_limit: 1,
+      key_expires_at: new Date(now + 60_000).toISOString() } })).toBe(true);
   });
   it.each([
     { origin: "https://api.qloo.com" }, { origin: "https://hackathon.api.qloo.com.evil.test" },
@@ -78,7 +90,7 @@ describe("P01 explicit checkpoint and exact public-cultural profile", () => {
   it("does not load server credentials before a valid checkpoint", async () => {
     const load = vi.spyOn(QlooServerConfig, "load");
     vi.stubEnv("QLOO_API_KEY", credential);
-    expect((await executeLiveP01({ checkpoint: { ...checkpoint(), exposed_key_revoked: false } }, memoryStore())).status).toBe("BLOCKED");
+    expect((await executeLiveP01({ checkpoint: { ...checkpoint(), credential_exposure_risk_acknowledged: false } }, memoryStore())).status).toBe("BLOCKED");
     expect(load).not.toHaveBeenCalled();
   });
   it("fails closed when the private server key is absent or only NEXT_PUBLIC exists", async () => {
@@ -131,7 +143,7 @@ describe("single-dispatch transport, unverified JSON and safe evidence", () => {
     const t = local(async () => new Response(body, { headers: { "content-type": "application/json" } }));
     const result = await t.runner.run({ checkpoint: checkpoint() });
     expect(result.reason).toBe("CREDENTIAL_REFLECTION"); expect(t.store.saveRaw).not.toHaveBeenCalled();
-    expect(JSON.stringify(t.store.saveSummary.mock.calls)).not.toContain(credential);
+    expect(JSON.stringify(vi.mocked(t.store.saveSummary).mock.calls)).not.toContain(credential);
   });
   it("sanitizes exceptions and evidence-write failures without retrying", async () => {
     const t = local(async () => { throw new Error(credential); }); const result = await t.runner.run({ checkpoint: checkpoint() });
@@ -166,26 +178,64 @@ describe("single-dispatch transport, unverified JSON and safe evidence", () => {
     await vi.waitFor(() => expect(during.request).toHaveBeenCalledTimes(1)); abort.abort();
     expect((await pending).reason).toBe("CANCELLED"); expect(during.store.saveRaw).not.toHaveBeenCalled();
   });
+  it("retains the in-flight slot when cancellation of an error body has not settled", async () => {
+    let finish!: () => void;
+    const t = local(async () => new Response(new ReadableStream({ cancel() { return new Promise<void>((r) => { finish = r; }); } }), { status: 401 }), "5");
+    const result = await t.runner.run({ checkpoint: checkpoint() });
+    expect(result).toMatchObject({ reason: "TIMEOUT", http_status: 401, transport_settled: false, response_bytes: null });
+    expect((await t.runner.run({ checkpoint: checkpoint() })).reason).toBe("CONCURRENCY_LIMIT");
+    finish(); await new Promise((r) => setTimeout(r, 5));
+    expect((await t.runner.run({ checkpoint: checkpoint() })).reason).toBe("CALL_BUDGET_EXHAUSTED");
+  });
 });
 
 describe("private storage and safe default CLI", () => {
   async function temp() { await mkdir(".artifacts", { recursive: true }); return mkdtemp(resolve(".artifacts/p01-store-test-")); }
-  it("retains an exclusive one-attempt marker across store instances, with no authentication header", async () => {
-    const root = await temp(); const first = createPrivateP01Store(root); await first.reserve();
-    await expect(createPrivateP01Store(root).reserve()).rejects.toThrow();
-    const text = await readFile(join(root,"private/qloo-probes/p01/attempt.json"),"utf8");
+  it("retains each exclusive approved attempt across store instances, with no authentication header", async () => {
+    const root = await temp(); const c = checkpoint(); const first = createPrivateP01Store(root, c); await first.reserve();
+    await expect(createPrivateP01Store(root, c).reserve()).rejects.toThrow();
+    const text = await readFile(join(root,`private/qloo-probes/p01/attempts/${c.attempt_id}/attempt.json`),"utf8");
     expect(text).not.toContain("X-Api-Key"); expect(text).not.toContain(credential);
     await first.saveRaw(Buffer.from('{"synthetic_storage_test_only":true}'));
-    await first.saveSummary({ ...blockedP01(), source_mode: "offline_test", status: "UNKNOWN", dispatches: 1, reason: "SCHEMA_REVIEW_REQUIRED", raw_saved_privately: true });
+    await first.saveSummary({ ...blockedP01(), attempt_id: c.attempt_id, elapsed_ms: 1, source_mode: "offline_test", status: "UNKNOWN", dispatches: 1, reason: "SCHEMA_REVIEW_REQUIRED", raw_saved_privately: true });
     await expect(first.saveRaw(Buffer.from("{}"))).rejects.toThrow();
+    await expect(createPrivateP01Store(root, c).reserve()).rejects.toThrow();
+    expect(await inspectPrivateP01Ledger(root)).toMatchObject({ reserved_attempts: 1, recorded_dispatches: 1, unresolved_attempts: 0 });
+  });
+  it("allows a fresh separately approved ID after a recorded failure while preserving prior accounting", async () => {
+    const root = await temp(); const first = checkpoint(); const store = createPrivateP01Store(root, first);
+    const t = local(async () => new Response(null, { status: 401 }), "4000", store);
+    expect((await t.runner.run({ checkpoint: first })).reason).toBe("AUTH_INVALID");
+    await expect(createPrivateP01Store(root, checkpoint()).reserve()).rejects.toThrow();
+    const next = { ...checkpoint(), previous_attempt_id: first.attempt_id, prior_reserved_attempts: 1 };
+    const second = createPrivateP01Store(root, next); await second.reserve();
+    await second.saveSummary(blockedP01("CANCELLED", next.attempt_id));
+    const count = await inspectPrivateP01Ledger(root);
+    expect(count).toMatchObject({ reserved_attempts: 2, recorded_dispatches: 1, conservative_dispatch_upper_bound: 1, last_attempt_id: next.attempt_id });
+    expect(await readFile(join(root, `private/qloo-probes/p01/attempts/${first.attempt_id}/summary.json`), "utf8")).toContain("AUTH_INVALID");
+  });
+  it("keeps incomplete or unsettled attempts locked and never offers a force/reset bypass", async () => {
+    const root = await temp(); const c = checkpoint(); const store = createPrivateP01Store(root, c); await store.reserve();
+    await expect(inspectPrivateP01Ledger(root)).rejects.toThrow();
+    await store.saveSummary({ ...blockedP01(), attempt_id: c.attempt_id, elapsed_ms: 5, transport_settled: false,
+      dispatches: 1, source_mode: "offline_test", status: "UNKNOWN", reason: "TIMEOUT" });
+    await expect(createPrivateP01Store(root, { ...checkpoint(), previous_attempt_id: c.attempt_id, prior_reserved_attempts: 1 }).reserve()).rejects.toThrow();
+    await expect(inspectPrivateP01Ledger(root)).rejects.toThrow();
+    expect(await readFile(join(root, "private/qloo-probes/p01/active.lock"), "utf8")).toContain(c.attempt_id);
+  });
+  it("preserves a legacy fixed attempt and blocks automatic migration or deletion", async () => {
+    const root = await temp(); await mkdir(join(root, "private/qloo-probes/p01"), { recursive: true });
+    const path = join(root, "private/qloo-probes/p01/attempt.json"); await writeFile(path, '{"legacy_test_only":true}');
+    await expect(createPrivateP01Store(root, checkpoint()).reserve()).rejects.toThrow();
+    expect(await readFile(path, "utf8")).toBe('{"legacy_test_only":true}');
   });
   it("rejects a linked private directory and missing/oversized checkpoint files", async () => {
     const root = await temp(); const destination = await temp();
     await symlink(destination,join(root,"private"),process.platform === "win32" ? "junction" : "dir");
-    await expect(createPrivateP01Store(root).reserve()).rejects.toThrow();
+    await expect(createPrivateP01Store(root, checkpoint()).reserve()).rejects.toThrow();
     expect((await liveP01FromPrivateCheckpoint(root)).status).toBe("BLOCKED");
     const next = await temp(); expect((await liveP01FromPrivateCheckpoint(next)).status).toBe("BLOCKED");
-    await mkdir(join(next,"private/qloo-probes"),{ recursive: true }); await writeFile(join(next,"private/qloo-probes/p01-checkpoint.json"),"x".repeat(4097));
+    await mkdir(join(next,"private/qloo-probes"),{ recursive: true }); await writeFile(join(next,"private/qloo-probes/p01-checkpoint.json"),"x".repeat(8193));
     expect((await liveP01FromPrivateCheckpoint(next)).status).toBe("BLOCKED");
   });
   it("prints only a blocked preview without reading credentials or executing by default", () => {

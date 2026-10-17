@@ -3,8 +3,9 @@ import { Readable } from "node:stream";
 import { performance } from "node:perf_hooks";
 import { assertServer, classifyHttp } from "./boundary-error";
 import { QlooServerConfig } from "./server-config";
-import { blockedP01, P01_PROFILE, P01ProfileSchema, P01SummarySchema, ProbeReasonSchema, validP01Checkpoint,
+import { blockedP01, P01_PROFILE, P01ProfileSchema, P01CheckpointSchema, P01SummarySchema, ProbeReasonSchema, validP01Checkpoint,
   type P01Summary, type ProbeReason } from "./p01-profile";
+import { unsafeP01Diagnostics } from "./p01-local-env";
 
 export interface ProbeRequest {
   readonly url: string; readonly method: "GET"; readonly headers: Readonly<Record<string, string>>;
@@ -12,7 +13,7 @@ export interface ProbeRequest {
 }
 export interface LocalProbeTransport { readonly kind: "local-test-double"; send(request: ProbeRequest): Promise<Response> }
 export interface ProbeStore {
-  // Reserve before dispatch. Production uses a fixed exclusive file, never automatically removed/reset.
+  // Reserve a separately approved ID before dispatch; retain every immutable attempt record.
   reserve(): Promise<void>;
   saveRaw(bytes: Uint8Array): Promise<void>;
   saveSummary(summary: P01Summary): Promise<void>;
@@ -23,8 +24,8 @@ function safeReason(error: unknown): ProbeReason {
   return error instanceof ProbeStop && ProbeReasonSchema.safeParse(error.reason).success ? error.reason : "NETWORK_ERROR";
 }
 
-async function readCapped(response: Response, signal: AbortSignal): Promise<Uint8Array> {
-  const reader = response.body?.getReader(); if (!reader) return new Uint8Array();
+async function readCapped(response: Response, signal: AbortSignal, observed: (bytes: number) => void): Promise<Uint8Array> {
+  observed(0); const reader = response.body?.getReader(); if (!reader) return new Uint8Array();
   const cancel = () => { void reader.cancel().catch(() => {}); };
   signal.addEventListener("abort", cancel, { once: true });
   try {
@@ -32,6 +33,7 @@ async function readCapped(response: Response, signal: AbortSignal): Promise<Uint
     for (;;) {
       const part = await reader.read(); if (signal.aborted) stop("CANCELLED"); if (part.done) break;
       size += part.value.byteLength;
+      observed(Math.min(size, 65_537));
       if (size > 65_536) { cancel(); stop("RESPONSE_TOO_LARGE"); }
       chunks.push(part.value);
     }
@@ -53,6 +55,7 @@ function runner(sourceMode: "offline_test" | "live_probe", loadConfig: () => Qlo
       if (Object.keys(options).some((k) => !["checkpoint", "profile", "signal"].includes(k))) return blockedP01("INVALID_PROFILE");
       if (!P01ProfileSchema.safeParse(options.profile ?? P01_PROFILE).success) return blockedP01("INVALID_PROFILE");
       if (!validP01Checkpoint(options.checkpoint)) return blockedP01();
+      const checkpoint = P01CheckpointSchema.parse(options.checkpoint);
       if (busy) return blockedP01("CONCURRENCY_LIMIT");
       if (started) return blockedP01("CALL_BUDGET_EXHAUSTED");
       if (options.signal?.aborted) return blockedP01("CANCELLED");
@@ -64,12 +67,17 @@ function runner(sourceMode: "offline_test" | "live_probe", loadConfig: () => Qlo
         headers = config.credentialHeaders();
       } catch { busy = false; return blockedP01("CONFIG_BLOCKED"); }
       try { await store.reserve(); } catch { busy = false; return blockedP01("EVIDENCE_UNAVAILABLE"); }
-      if (options.signal?.aborted || !validP01Checkpoint(options.checkpoint)) { busy = false; return blockedP01("CHECKPOINT_REQUIRED"); }
+      if (options.signal?.aborted || !validP01Checkpoint(options.checkpoint)) {
+        busy = false; const result = blockedP01("CHECKPOINT_REQUIRED", checkpoint.attempt_id);
+        try { await store.saveSummary(result); } catch { return blockedP01("EVIDENCE_UNAVAILABLE", checkpoint.attempt_id); }
+        return result;
+      }
       started = true;
       const url = new URL(P01_PROFILE.path, P01_PROFILE.origin); url.search = new URLSearchParams(P01_PROFILE.params).toString();
-      const controller = new AbortController(); const deadline = performance.now() + config.requestTimeoutMs;
+      const controller = new AbortController(); const began = performance.now(); const deadline = began + config.requestTimeoutMs;
       let timer: ReturnType<typeof setTimeout> | undefined; let cancel: (() => void) | undefined;
-      let httpStatus: number | null = null; let responseBytes = 0; let saved = false;
+      let httpStatus: number | null = null; let responseBytes: number | null = null; let saved = false;
+      let transportSettled = false; let elapsed: number | null = null;
       let reason: ProbeReason = "SCHEMA_REVIEW_REQUIRED";
       const interrupted = new Promise<never>((_, reject) => {
         cancel = () => { controller.abort(); reject(new ProbeStop("CANCELLED")); };
@@ -79,12 +87,12 @@ function runner(sourceMode: "offline_test" | "live_probe", loadConfig: () => Qlo
       const operation = (async () => {
         const response = await send(Object.freeze({ url: url.toString(), method: "GET", signal: controller.signal,
           redirect: "error", headers: Object.freeze({ ...headers, Accept: "application/json" }) }));
-        if (controller.signal.aborted) { void response.body?.cancel().catch(() => {}); stop("CANCELLED"); }
+        if (controller.signal.aborted) { await response.body?.cancel().catch(() => {}); stop("CANCELLED"); }
         httpStatus = response.status;
-        if (response.status >= 300 && response.status < 400) { void response.body?.cancel().catch(() => {}); stop("REDIRECT_REJECTED"); }
+        if (response.status >= 300 && response.status < 400) { await response.body?.cancel().catch(() => {}); stop("REDIRECT_REJECTED"); }
         const code = classifyHttp(response.status);
-        if (code) { void response.body?.cancel().catch(() => {}); stop(ProbeReasonSchema.safeParse(code).success ? code as ProbeReason : "HTTP_ERROR"); }
-        const bytes = await readCapped(response, controller.signal);
+        if (code) { await response.body?.cancel().catch(() => {}); stop(ProbeReasonSchema.safeParse(code).success ? code as ProbeReason : "HTTP_ERROR"); }
+        const bytes = await readCapped(response, controller.signal, (bytes) => { responseBytes = bytes; });
         if (controller.signal.aborted) stop("CANCELLED");
         rejectReflection(bytes, headers["X-Api-Key"]!, undefined);
         let raw: unknown;
@@ -95,19 +103,20 @@ function runner(sourceMode: "offline_test" | "live_probe", loadConfig: () => Qlo
         if (media !== "application/json" && !/^application\/[a-z0-9!#$&^_.+-]+\+json$/.test(media ?? "")) stop("SCHEMA_MISMATCH");
         return bytes; // Syntax validation only. No Qloo field names, entity selections or semantic PASS.
       })();
-      void operation.then(() => { busy = false; }, () => { busy = false; });
+      void operation.then(() => { transportSettled = true; busy = false; }, () => { transportSettled = true; busy = false; });
       try {
         const bytes = await Promise.race([operation, interrupted]);
+        elapsed = Math.round((performance.now() - began) * 1000) / 1000;
         if (options.signal?.aborted) stop("CANCELLED");
         if (performance.now() >= deadline) { controller.abort(); stop("TIMEOUT"); }
-        responseBytes = bytes.byteLength;
         try { await store.saveRaw(bytes); saved = true; } catch { stop("EVIDENCE_UNAVAILABLE"); }
-      } catch (error) { reason = safeReason(error); }
+      } catch (error) { elapsed ??= Math.round((performance.now() - began) * 1000) / 1000; reason = safeReason(error); }
       finally { clearTimeout(timer); if (cancel) options.signal?.removeEventListener("abort", cancel); }
       const status = ["AUTH_INVALID", "FORBIDDEN", "HTTP_ERROR", "REDIRECT_REJECTED"].includes(reason) ? "FAIL" : "UNKNOWN";
-      let summary = P01SummarySchema.parse({ schema_revision: "tastegate.raw-probe.v1", probe: "P01", source_mode: sourceMode,
+      let summary = P01SummarySchema.parse({ schema_revision: "tastegate.raw-probe.v2", probe: "P01", attempt_id: checkpoint.attempt_id, source_mode: sourceMode,
         status, reason, dispatches: 1, max_dispatches: 1, automatic_retries: 0, http_status: httpStatus,
-        response_bytes: responseBytes, raw_saved_privately: saved, semantic_review: "NOT_REVIEWED" });
+        response_bytes: responseBytes, elapsed_ms: elapsed, transport_settled: transportSettled,
+        raw_saved_privately: saved, semantic_review: "NOT_REVIEWED" });
       try { await store.saveSummary(summary); }
       catch { summary = P01SummarySchema.parse({ ...summary, status: "UNKNOWN", reason: "EVIDENCE_UNAVAILABLE" }); }
       return summary;
@@ -137,19 +146,21 @@ function sendNative(request: ProbeRequest): Promise<Response> {
     outgoing.once("error", () => reject(new ProbeStop("NETWORK_ERROR"))); outgoing.end();
   });
 }
-let liveBusy = false; let liveSpent = false;
-export async function executeLiveP01(options: { checkpoint?: unknown; profile?: unknown; signal?: AbortSignal }, store: ProbeStore): Promise<P01Summary> {
+let liveBusy = false; const liveSpent = new Set<string>();
+export async function executeLiveP01(options: { checkpoint?: unknown; profile?: unknown; signal?: AbortSignal }, store: ProbeStore,
+  trustedLocalConfig?: QlooServerConfig): Promise<P01Summary> {
   assertServer();
   if (!validP01Checkpoint(options.checkpoint)) return blockedP01();
-  if (/http|https|tls|net/i.test((process.env.NODE_DEBUG ?? "") + (process.env.NODE_DEBUG_NATIVE ?? "")) || process.env.SSLKEYLOGFILE ||
-      /--(?:tls-keylog|trace-tls|inspect|require|import)/.test(process.env.NODE_OPTIONS ?? "") || process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0")
-    return blockedP01("UNSAFE_DIAGNOSTICS");
+  if (unsafeP01Diagnostics()) return blockedP01("UNSAFE_DIAGNOSTICS");
+  const id = P01CheckpointSchema.parse(options.checkpoint).attempt_id;
   if (liveBusy) return blockedP01("CONCURRENCY_LIMIT");
-  if (liveSpent) return blockedP01("CALL_BUDGET_EXHAUSTED");
+  if (liveSpent.has(id)) return blockedP01("CALL_BUDGET_EXHAUSTED");
   liveBusy = true;
+  let releaseSlot = true;
   try {
-    const result = await runner("live_probe", () => QlooServerConfig.load(), sendNative, store).run(options);
-    liveSpent = result.dispatches === 1; return result;
-  } catch { liveSpent = true; throw new Error("PROBE_EXECUTION_INTERRUPTED"); }
-  finally { liveBusy = false; }
+    const result = await runner("live_probe", () => trustedLocalConfig ?? QlooServerConfig.load(), sendNative, store).run(options);
+    if (result.dispatches === 1) liveSpent.add(id);
+    releaseSlot = result.transport_settled; return result;
+  } catch { liveSpent.add(id); releaseSlot = false; throw new Error("PROBE_EXECUTION_INTERRUPTED"); }
+  finally { if (releaseSlot) liveBusy = false; }
 }
