@@ -67,7 +67,8 @@ it("rejects linked, oversized, unignored and tracked dotenv state without printi
 it("provides CLI preflight with a local dotenv credential, zero reservations and no default dispatch", async () => {
   const path = await root();
   for (const name of ["boundary-error", "server-config", "p01-profile", "p01-local-env", "p01-runner", "p01-private-store",
-    "p02-profile", "p02-private-store", "probe-definitions", "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
+    "p02-profile", "p02-private-store", "p04-profile", "p04-private-store",
+    "probe-definitions", "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
     const dest = join(path, "src/qloo", name + ".ts"); await mkdir(dirname(dest), { recursive: true });
     await copyFile(resolve("src/qloo", name + ".ts"), dest);
   }

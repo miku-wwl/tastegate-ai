@@ -14,7 +14,8 @@
     "test:e2e": "node scripts/playwright.mjs test",
     "browser:install": "node scripts/playwright.mjs install chromium",
     "probe:p01": "node scripts/qloo-probe.mjs",
-    "probe:p02": "node scripts/qloo-probe-p02.mjs"
+    "probe:p02": "node scripts/qloo-probe-p02.mjs",
+    "probe:p04": "node scripts/qloo-probe-p04.mjs"
   },
   "dependencies": {
     "next": "16.4.2",

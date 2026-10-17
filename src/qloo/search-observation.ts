@@ -1,11 +1,13 @@
 import { z } from "zod";
 
-// A strict projection of fields observed in P01, for local post-capture review only.
+// A strict projection of fields observed in P01/P02, for local post-capture review only.
 // Unknown provider fields remain quarantined in the private raw file, never trusted evidence.
-const TagProjection = z.strictObject({ name: z.string().min(1), tag_id: z.string().min(1),
-  type: z.string().min(1), value: z.string() });
+// Opaque identifiers: no invented UUID-only requirement and no silent ID rewriting.
+const observedId = z.string().min(1).max(256).refine((value) => !/[\s\u0000-\u001f\u007f]/u.test(value));
+const TagProjection = z.strictObject({ name: z.string().min(1).refine((value) => value.trim().length > 0),
+  tag_id: observedId, type: observedId, value: z.string().optional() });
 const CandidateProjection = z.strictObject({
-  entity_id: z.string().min(1).max(256).refine((value) => value === value.trim()),
+  entity_id: observedId,
   name: z.string().min(1).max(500).refine((value) => value.trim().length > 0),
   types: z.array(z.string().min(1)).min(1).max(100),
   popularity: z.number().finite().optional(), disambiguation: z.string().optional(),
@@ -32,11 +34,15 @@ export function observeSearch(raw: unknown, requestedType: "urn:entity:artist" |
   const ids = checked.results.map((item) => item.entity_id);
   if (new Set(ids).size !== ids.length) throw new Error("OBSERVED_SEARCH_ID_COLLISION");
   const exact = checked.results.filter((item) => item.name === query).length;
+  const tags = checked.results.flatMap((item) => item.tags ?? []);
   return Object.freeze({
     collection_path: "$.results", result_count: ids.length, distinct_ids: ids.length,
     exact_label_count: exact, exact_label_ambiguity: exact > 1,
     tags_present_count: checked.results.filter((item) => item.tags !== undefined).length,
     tags_missing_count: checked.results.filter((item) => item.tags === undefined).length,
+    tag_items_count: tags.length,
+    tag_value_present_count: tags.filter((item) => item.value !== undefined).length,
+    tag_value_missing_count: tags.filter((item) => item.value === undefined).length,
     top_level_keys: Object.keys(envelope).sort(),
     pagination: "NOT_INTERPRETED", selected_entity_id: null,
     identity: "INDEPENDENT_REVIEW_REQUIRED", cultural_affinity: "NOT_ESTABLISHED",

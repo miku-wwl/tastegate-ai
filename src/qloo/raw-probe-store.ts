@@ -2,11 +2,12 @@ import { lstat, mkdir, open, readFile, readdir, realpath, unlink } from "node:fs
 import { resolve, join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { probeDefinition, type ExecutableProbe, type RawProbeSummary } from "./probe-definitions";
+import { EXECUTABLE_PROBES, probeDefinition, type ExecutableProbe, type RawProbeSummary } from "./probe-definitions";
 import { executeLiveRawProbe, type ProbeStore } from "./raw-probe-runner";
 import { inspectSavedP01 } from "./p01-reuse";
 import type { P01Checkpoint } from "./p01-profile";
 import type { P02Checkpoint } from "./p02-profile";
+import type { P04Checkpoint } from "./p04-profile";
 import { loadLocalP01Config } from "./p01-local-env";
 
 async function checkedDirectory(projectRoot: string, probe: ExecutableProbe): Promise<string> {
@@ -54,7 +55,7 @@ async function ledger(attempts: string, probe: ExecutableProbe, ownedLock?: stri
   if (legacy) throw new Error("LEGACY_ATTEMPT_REVIEW_REQUIRED");
   const children = await readdir(attempts, { withFileTypes: true });
   if (children.length > 1000) throw new Error("LEDGER_REVIEW_REQUIRED");
-  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint; summary: RawProbeSummary | null }> = [];
+  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P04Checkpoint; summary: RawProbeSummary | null }> = [];
   for (const child of children) {
     if (!child.isDirectory() || child.isSymbolicLink() || !def.checkpointSchema.shape.attempt_id.safeParse(child.name).success)
       throw new Error("LEDGER_REVIEW_REQUIRED");
@@ -89,10 +90,10 @@ export async function inspectPrivateProbeLedger(projectRoot: string, probe: Exec
   const attempts = await checkedDirectory(projectRoot, probe);
   const base = resolve(attempts, "../..");
   if (await exists(join(base, "active.lock"))) throw new Error("LEDGER_BUSY_OR_REVIEW_REQUIRED");
-  for (const other of ["p01", "p02"]) if (await exists(join(base, other, "active.lock"))) throw new Error("LEDGER_BUSY_OR_REVIEW_REQUIRED");
+  for (const other of EXECUTABLE_PROBES) if (await exists(join(base, other.toLowerCase(), "active.lock"))) throw new Error("LEDGER_BUSY_OR_REVIEW_REQUIRED");
   return ledger(attempts, probe);
 }
-export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint, source: SourceRecord | null = null): ProbeStore {
+export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P04Checkpoint, source: SourceRecord | null = null): ProbeStore {
   const def = probeDefinition(probe);
   const id = checkpoint.attempt_id; let reserved: string | null = null; let lockPath: string | null = null; let globalLock: string | null = null;
   async function releaseLock() {
@@ -118,7 +119,7 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
       await exclusiveWrite(globalPath, JSON.stringify({ attempt_id: id, probe }) + "\n"); globalLock = globalPath;
       const lock = join(resolve(attempts, ".."), "active.lock");
       try {
-        for (const other of ["p01", "p02"]) if (await exists(join(base, other, "active.lock"))) throw new Error("LEDGER_BUSY_OR_REVIEW_REQUIRED");
+        for (const other of EXECUTABLE_PROBES) if (await exists(join(base, other.toLowerCase(), "active.lock"))) throw new Error("LEDGER_BUSY_OR_REVIEW_REQUIRED");
         await exclusiveWrite(lock, JSON.stringify({ attempt_id: id }) + "\n"); lockPath = lock;
       } catch { await unlink(globalPath); globalLock = null; throw new Error("PRIVATE_EVIDENCE_UNAVAILABLE"); }
       let created = false;
@@ -127,6 +128,15 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
           const p01 = await ledger(await checkedDirectory(projectRoot, "P01"), "P01");
           if (p01.reserved_attempts !== 1 || p01.recorded_dispatches !== 1 || p01.unresolved_attempts !== 0)
             throw new Error("P01_REUSE_REVIEW_REQUIRED");
+        }
+        if (probe === "P04") {
+          for (const prior of ["P01", "P02"] as const) {
+            const previous = await ledger(await checkedDirectory(projectRoot, prior), prior);
+            const reviewed = (checkpoint as P04Checkpoint).prior_probe_dispatches_reviewed[prior];
+            if (previous.reserved_attempts !== reviewed || previous.recorded_dispatches !== reviewed ||
+                previous.unresolved_attempts !== 0 || previous.last_attempt_id === id)
+              throw new Error("PRIOR_ATTEMPTS_NOT_REVIEWED");
+          }
         }
         const previous = await ledger(attempts, probe, id);
         if (previous.unresolved_attempts || previous.reserved_attempts !== checkpoint.prior_reserved_attempts ||
@@ -187,7 +197,8 @@ export async function liveProbeFromPrivateCheckpoint(projectRoot: string, probe:
       "src/qloo/p01-runner.ts", "src/qloo/p01-private-store.ts", "src/qloo/p01-local-env.ts",
       "src/qloo/raw-probe-runner.ts", "src/qloo/raw-probe-store.ts", "src/qloo/probe-definitions.ts",
       "src/qloo/p02-profile.ts", "src/qloo/p02-private-store.ts", "src/qloo/p01-reuse.ts", "src/qloo/search-observation.ts",
-      "scripts/probe-cli.mjs", "scripts/qloo-probe.mjs", "scripts/qloo-probe-p02.mjs", "package.json", "package-lock.json"])
+      "src/qloo/p04-profile.ts", "src/qloo/p04-private-store.ts",
+      "scripts/probe-cli.mjs", "scripts/qloo-probe.mjs", "scripts/qloo-probe-p02.mjs", "scripts/qloo-probe-p04.mjs", "package.json", "package-lock.json"])
       files.push({ path, sha256: createHash("sha256").update(await readFile(resolve(projectRoot, path))).digest("hex") });
     source = { revision, files };
   } catch { return def.blocked("EVIDENCE_UNAVAILABLE"); }

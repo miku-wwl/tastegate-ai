@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 
 export async function runProbeCli(probe) {
-if (probe !== "P01" && probe !== "P02") throw new Error("PROBE_NOT_EXECUTABLE");
+if (probe !== "P01" && probe !== "P02" && probe !== "P04") throw new Error("PROBE_NOT_EXECUTABLE");
 const lower = probe.toLowerCase();
 const project = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -19,7 +19,8 @@ try {
   const target = await mkdtemp(join(cache, "compile-"));
   await writeFile(join(target, "package.json"), '{"type":"commonjs"}\n');
   for (const name of ["boundary-error", "server-config", "p01-profile", "p01-local-env", "p01-runner", "p01-private-store",
-    "p02-profile", "p02-private-store", "probe-definitions", "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
+    "p02-profile", "p02-private-store", "p04-profile", "p04-private-store",
+    "probe-definitions", "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
     const source = await readFile(join(project, "src/qloo", `${name}.ts`), "utf8");
     const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } });
     await writeFile(join(target, `${name}.js`), compiled.outputText);
@@ -50,6 +51,14 @@ try {
         const { inspectSavedP01 } = require(join(target, "p01-reuse.js"));
         const saved = await inspectSavedP01(project);
         preflight.p01_reuse = { source_attempt: saved.sourceAttempt, integrity_verified: true, observation: saved.observation };
+      }
+      if (probe === "P04") {
+        preflight.prior_probe_ledgers = {};
+        for (const prior of ["P01", "P02"]) {
+          const ledger = await inspectPrivateProbeLedger(project, prior);
+          if (ledger.reserved_attempts !== 1 || ledger.recorded_dispatches !== 1 || ledger.unresolved_attempts !== 0) throw new Error("PRIOR_ATTEMPTS_NOT_REVIEWED");
+          preflight.prior_probe_ledgers[prior] = ledger;
+        }
       } }
     catch { preflight.reason = "LEDGER_REVIEW_REQUIRED"; configReady = false; }
     if (configReady && preflight.ledger?.unresolved_attempts === 0) preflight.status = "READY_FOR_HUMAN_APPROVAL";
