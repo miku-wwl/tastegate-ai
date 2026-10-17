@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/playwright.mjs test",
-    "browser:install": "node scripts/playwright.mjs install chromium"
+    "browser:install": "node scripts/playwright.mjs install chromium",
+    "probe:p01": "node scripts/qloo-probe.mjs"
   },
   "dependencies": {
     "next": "16.4.2",

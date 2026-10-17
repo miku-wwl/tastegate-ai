@@ -15,6 +15,7 @@ export class QlooServerConfig {
   }
   static load(env: Readonly<Record<string, string | undefined>> = process.env): QlooServerConfig {
     assertServer();
+    if (env.NEXT_PUBLIC_QLOO_API_KEY) throw new QlooBoundaryError("INVALID_CONFIG");
     // Exact string comparison rejects credentials, suffix hosts, paths, ports and redirects.
     if ((env.QLOO_BASE_URL ?? HACKATHON_ORIGIN) !== HACKATHON_ORIGIN)
       throw new QlooBoundaryError("INVALID_BASE_URL");
