@@ -27,13 +27,15 @@ export const P01CheckpointSchema = z.strictObject({
   approved_at: z.iso.datetime(), approval_expires_at: z.iso.datetime(),
 });
 export type P01Checkpoint = z.infer<typeof P01CheckpointSchema>;
-export function validP01Checkpoint(value: unknown, now = Date.now()): boolean {
-  const result = P01CheckpointSchema.safeParse(value);
-  if (!result.success) return false;
-  const v = result.data; const start = Date.parse(v.approved_at); const end = Date.parse(v.approval_expires_at);
+export function validProbeWindow(v: Pick<P01Checkpoint, "prior_reserved_attempts" | "previous_attempt_id" | "attempt_id" | "approved_at" | "approval_expires_at" | "quota">, now = Date.now()): boolean {
+  const start = Date.parse(v.approved_at); const end = Date.parse(v.approval_expires_at);
   return (v.prior_reserved_attempts === 0 ? v.previous_attempt_id === null : v.previous_attempt_id !== null) &&
     v.attempt_id !== v.previous_attempt_id && start <= now && end > now && end > start && end - start <= 15 * 60_000 &&
     (v.quota.key_expires_at === "UNKNOWN" || Date.parse(v.quota.key_expires_at) > now);
+}
+export function validP01Checkpoint(value: unknown, now = Date.now()): boolean {
+  const result = P01CheckpointSchema.safeParse(value);
+  return result.success && validProbeWindow(result.data, now);
 }
 
 export const ProbeReasonSchema = z.enum(["CHECKPOINT_REQUIRED", "INVALID_PROFILE", "CONFIG_BLOCKED", "UNSAFE_DIAGNOSTICS",
@@ -41,6 +43,12 @@ export const ProbeReasonSchema = z.enum(["CHECKPOINT_REQUIRED", "INVALID_PROFILE
   "AUTH_INVALID", "FORBIDDEN", "RATE_LIMITED", "UPSTREAM_ERROR", "HTTP_ERROR", "REDIRECT_REJECTED", "SCHEMA_MISMATCH",
   "RESPONSE_TOO_LARGE", "CREDENTIAL_REFLECTION", "SCHEMA_REVIEW_REQUIRED"]);
 export type ProbeReason = z.infer<typeof ProbeReasonSchema>;
+export function rawSummaryInvariant(v: { status: string; dispatches: number; source_mode: string; raw_saved_privately: boolean;
+  http_status: number | null; attempt_id: string | null; elapsed_ms: number | null }, ctx: { addIssue(issue: { code: "custom"; message: string }): void }) {
+  if (v.status === "PASS" || (v.dispatches === 0 && (v.source_mode !== "not_executed" || v.raw_saved_privately || v.http_status !== null)) ||
+      (v.dispatches === 1 && (v.source_mode === "not_executed" || v.attempt_id === null || v.elapsed_ms === null)))
+    ctx.addIssue({ code: "custom", message: "Unreviewed probe cannot assert semantic PASS or fabricated dispatch provenance" });
+}
 export const P01SummarySchema = z.strictObject({
   schema_revision: z.literal("tastegate.raw-probe.v2"), probe: z.literal("P01"), attempt_id: z.uuidv4().nullable(),
   source_mode: z.enum(["not_executed", "offline_test", "live_probe"]),
@@ -49,11 +57,7 @@ export const P01SummarySchema = z.strictObject({
   http_status: z.number().int().min(100).max(599).nullable(), response_bytes: z.number().int().min(0).max(65_537).nullable(),
   elapsed_ms: z.number().nonnegative().finite().nullable(), transport_settled: z.boolean(),
   raw_saved_privately: z.boolean(), semantic_review: z.literal("NOT_REVIEWED"),
-}).superRefine((v, ctx) => {
-  if (v.status === "PASS" || (v.dispatches === 0 && (v.source_mode !== "not_executed" || v.raw_saved_privately || v.http_status !== null)) ||
-      (v.dispatches === 1 && (v.source_mode === "not_executed" || v.attempt_id === null || v.elapsed_ms === null)))
-    ctx.addIssue({ code: "custom", message: "Unreviewed probe cannot assert semantic PASS or fabricated dispatch provenance" });
-});
+}).superRefine(rawSummaryInvariant);
 export type P01Summary = z.infer<typeof P01SummarySchema>;
 export function blockedP01(reason: ProbeReason = "CHECKPOINT_REQUIRED", attemptId: string | null = null): P01Summary {
   return P01SummarySchema.parse({ schema_revision: "tastegate.raw-probe.v2", probe: "P01", attempt_id: attemptId, source_mode: "not_executed",

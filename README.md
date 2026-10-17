@@ -1,7 +1,9 @@
 # tastegate-ai
 TasteGate AI — A Qloo-powered cultural quality gate that audits, repairs, and verifies AI-generated recommendations with evidence-backed cultural intelligence.
 
-**Current milestone: Phase 1B.2 conditional pass after one approved P01 (HTTP 200); independent review pending.** All executed audit scenarios use authored synthetic venues, IDs and rankings. The separate raw probe observed basic artist-search structure; no provider response became trusted audit evidence. The semantic LiveQlooAdapter remains disabled. No LLM inference, Python archive, deployment or measured recommendation-quality improvement is implemented.
+**Current milestone: Phase 1B.3 after one explicitly approved P02 (HTTP 200); STOP for independent schema/identity review.** P01 was not repeated. P02's attached tags omit the value field seen in P01; the local projection rejected them without automatic relaxation. No entity ID was selected. All executed audit scenarios use authored synthetic venues, IDs and rankings. No provider response became trusted audit evidence. The semantic LiveQlooAdapter remains disabled. No LLM inference, Python archive, deployment or measured recommendation-quality improvement is implemented.
+
+See the [actual P02 execution report](docs/PHASE1B3_P02_EXECUTION_REPORT.md), [readiness and preparation snapshot](docs/PHASE1B3_P02_P04_READINESS.md), [P02 identity protocol](docs/PHASE1B3_P02_ENTITY_RESOLUTION.md), [P03 venue controls](docs/PHASE1B3_P03_NYC_CONTROLS.md) and [P04 tag plan](docs/PHASE1B3_P04_TAG_PROBE_PLAN.md). npm run probe:p02 still previews with zero dispatches; the approved attempt has been consumed. P03/P04 have no executable definition or consent. Preparation/preflight cannot authorize another request.
 
 Use Node 22.12+, 24, or 26+ (validated here with Node 26.5.0). Install the exact locked dependencies and run locally:
 
