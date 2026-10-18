@@ -25,7 +25,7 @@ function safeReason(error: unknown): ProbeReason {
   return error instanceof ProbeStop && ProbeReasonSchema.safeParse(error.reason).success ? error.reason : "NETWORK_ERROR";
 }
 
-async function readCapped(response: Response, signal: AbortSignal, observed: (bytes: number) => void): Promise<Uint8Array> {
+async function readCapped(response: Response, signal: AbortSignal, cap: number, observed: (bytes: number) => void): Promise<Uint8Array> {
   observed(0); const reader = response.body?.getReader(); if (!reader) return new Uint8Array();
   const cancel = () => { void reader.cancel().catch(() => {}); };
   signal.addEventListener("abort", cancel, { once: true });
@@ -34,8 +34,8 @@ async function readCapped(response: Response, signal: AbortSignal, observed: (by
     for (;;) {
       const part = await reader.read(); if (signal.aborted) stop("CANCELLED"); if (part.done) break;
       size += part.value.byteLength;
-      observed(Math.min(size, 65_537));
-      if (size > 65_536) { cancel(); stop("RESPONSE_TOO_LARGE"); }
+      observed(Math.min(size, cap + 1));
+      if (size > cap) { cancel(); stop("RESPONSE_TOO_LARGE"); }
       chunks.push(part.value);
     }
     return Buffer.concat(chunks);
@@ -94,7 +94,7 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
         if (response.status >= 300 && response.status < 400) { await response.body?.cancel().catch(() => {}); stop("REDIRECT_REJECTED"); }
         const code = classifyHttp(response.status);
         if (code) { await response.body?.cancel().catch(() => {}); stop(ProbeReasonSchema.safeParse(code).success ? code as ProbeReason : "HTTP_ERROR"); }
-        const bytes = await readCapped(response, controller.signal, (bytes) => { responseBytes = bytes; });
+        const bytes = await readCapped(response, controller.signal, def.maxResponseBytes, (bytes) => { responseBytes = bytes; });
         if (controller.signal.aborted) stop("CANCELLED");
         rejectReflection(bytes, headers["X-Api-Key"]!, undefined);
         let raw: unknown;
@@ -115,7 +115,7 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
       } catch (error) { elapsed ??= Math.round((performance.now() - began) * 1000) / 1000; reason = safeReason(error); }
       finally { clearTimeout(timer); if (cancel) options.signal?.removeEventListener("abort", cancel); }
       const status = ["AUTH_INVALID", "FORBIDDEN", "HTTP_ERROR", "REDIRECT_REJECTED"].includes(reason) ? "FAIL" : "UNKNOWN";
-      let summary = def.summarySchema.parse({ schema_revision: "tastegate.raw-probe.v2", probe, attempt_id: checkpoint.attempt_id, source_mode: sourceMode,
+      let summary = def.summarySchema.parse({ ...def.blocked("CHECKPOINT_REQUIRED", checkpoint.attempt_id), source_mode: sourceMode,
         status, reason, dispatches: 1, max_dispatches: 1, automatic_retries: 0, http_status: httpStatus,
         response_bytes: responseBytes, elapsed_ms: elapsed, transport_settled: transportSettled,
         raw_saved_privately: saved, semantic_review: "NOT_REVIEWED" });

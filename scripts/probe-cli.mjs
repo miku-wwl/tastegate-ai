@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 
 export async function runProbeCli(probe) {
-if (probe !== "P01" && probe !== "P02" && probe !== "P03" && probe !== "P04") throw new Error("PROBE_NOT_EXECUTABLE");
+if (probe !== "P01" && probe !== "P02" && probe !== "P03" && probe !== "P04" && probe !== "P03R") throw new Error("PROBE_NOT_EXECUTABLE");
 const lower = probe.toLowerCase();
 const project = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -20,6 +20,7 @@ try {
   await writeFile(join(target, "package.json"), '{"type":"commonjs"}\n');
   for (const name of ["boundary-error", "server-config", "p01-profile", "p01-local-env", "p01-runner", "p01-private-store",
     "p02-profile", "p02-private-store", "p03-profile", "p03-private-store", "p04-profile", "p04-private-store",
+    "p03r-profile", "p03r-private-store", "probe-cli-contract",
     "probe-definitions", "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
     const source = await readFile(join(project, "src/qloo", `${name}.ts`), "utf8");
     const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } });
@@ -27,6 +28,7 @@ try {
   }
   const require = createRequire(import.meta.url);
   const { probeDefinition } = require(join(target, "probe-definitions.js"));
+  const { probeExecutionExitCode } = require(join(target, "probe-cli-contract.js"));
   const def = probeDefinition(probe);
   if (args[0] === `--preflight-${lower}`) {
     const { loadLocalP01Config, P01LocalEnvironmentError } = require(join(target, "p01-local-env.js"));
@@ -52,17 +54,21 @@ try {
         const saved = await inspectSavedP01(project);
         preflight.p01_reuse = { source_attempt: saved.sourceAttempt, integrity_verified: true, observation: saved.observation };
       }
-      if (probe === "P03" || probe === "P04") {
+      if (probe === "P03" || probe === "P04" || probe === "P03R") {
         preflight.prior_probe_ledgers = {};
-        for (const prior of probe === "P03" ? ["P01", "P02", "P04"] : ["P01", "P02"]) {
+        for (const prior of probe === "P03R" ? ["P01", "P02", "P03", "P04"] : probe === "P03" ? ["P01", "P02", "P04"] : ["P01", "P02"]) {
           const ledger = await inspectPrivateProbeLedger(project, prior);
           if (ledger.reserved_attempts !== 1 || ledger.recorded_dispatches !== 1 || ledger.unresolved_attempts !== 0) throw new Error("PRIOR_ATTEMPTS_NOT_REVIEWED");
           preflight.prior_probe_ledgers[prior] = ledger;
         }
+        if (probe === "P03R") {
+          const { inspectHistoricalP03ForRecovery } = require(join(target, "raw-probe-store.js"));
+          preflight.historical_p03 = await inspectHistoricalP03ForRecovery(project);
+        }
       } }
     catch { preflight.reason = "LEDGER_REVIEW_REQUIRED"; configReady = false; }
     if (configReady && preflight.ledger?.unresolved_attempts === 0) preflight.status = "READY_FOR_HUMAN_APPROVAL";
-    process.stdout.write(JSON.stringify({ profile: def.profile, max_dispatches_per_approval: 1, max_response_bytes: 65536,
+    process.stdout.write(JSON.stringify({ profile: def.profile, max_dispatches_per_approval: 1, max_response_bytes: def.maxResponseBytes,
       deadline_ms: 4000, redirects: 0, automatic_retries: 0, preflight }, null, 2) + "\n");
     process.exitCode = preflight.status === "BLOCKED" ? 2 : 0;
   } else {
@@ -77,12 +83,12 @@ try {
   }
   // Safe fixed profile and bounded summary only; no raw JSON, checkpoint, headers or env dump.
   process.stdout.write(JSON.stringify({ profile: def.profile, summary }, null, 2) + "\n");
-  if (args.length) process.exitCode = summary.status === "BLOCKED" ? 2 : 0;
+  if (args.length) process.exitCode = probeExecutionExitCode(summary.status);
   }
 } catch {
   process.stderr.write(JSON.stringify(executionStarted ?
     { status: "UNKNOWN", reason: "PROBE_EXECUTION_INTERRUPTED", dispatches: null, max_dispatches: 1 } :
-    { status: "BLOCKED", reason: "PROBE_PREPARATION_FAILED", dispatches: 0 }) + "\n"); process.exitCode = 2;
+    { status: "BLOCKED", reason: "PROBE_PREPARATION_FAILED", dispatches: 0 }) + "\n"); process.exitCode = executionStarted ? 3 : 2;
 }
 
 

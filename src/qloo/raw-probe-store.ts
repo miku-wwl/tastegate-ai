@@ -9,6 +9,8 @@ import type { P01Checkpoint } from "./p01-profile";
 import type { P02Checkpoint } from "./p02-profile";
 import type { P03Checkpoint } from "./p03-profile";
 import type { P04Checkpoint } from "./p04-profile";
+import { HISTORICAL_P03_ATTEMPT, P03R_PROFILE, type P03RCheckpoint } from "./p03r-profile";
+import { P03_PROFILE, P03ProfileSchema, P03CheckpointSchema, P03SummarySchema } from "./p03-profile";
 import { loadLocalP01Config } from "./p01-local-env";
 
 async function checkedDirectory(projectRoot: string, probe: ExecutableProbe): Promise<string> {
@@ -56,13 +58,17 @@ async function ledger(attempts: string, probe: ExecutableProbe, ownedLock?: stri
   if (legacy) throw new Error("LEGACY_ATTEMPT_REVIEW_REQUIRED");
   const children = await readdir(attempts, { withFileTypes: true });
   if (children.length > 1000) throw new Error("LEDGER_REVIEW_REQUIRED");
-  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint; summary: RawProbeSummary | null }> = [];
+  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint; summary: RawProbeSummary | null }> = [];
   for (const child of children) {
     if (!child.isDirectory() || child.isSymbolicLink() || !def.checkpointSchema.shape.attempt_id.safeParse(child.name).success)
       throw new Error("LEDGER_REVIEW_REQUIRED");
     const path = join(attempts, child.name);
     if (await realpath(path) !== path) throw new Error("LEDGER_REVIEW_REQUIRED");
-    const record = await privateJson(join(path, "attempt.json")) as { checkpoint?: unknown };
+    const record = await privateJson(join(path, "attempt.json")) as { checkpoint?: unknown; profile?: unknown;
+      record_revision?: unknown; profile_revision?: unknown; max_response_bytes?: unknown };
+    if (probe === "P03R" && (record.record_revision !== "tastegate.probe-attempt.v3" ||
+        record.profile_revision !== P03R_PROFILE.revision || record.max_response_bytes !== def.maxResponseBytes ||
+        !def.profileSchema.safeParse(record.profile).success)) throw new Error("LEDGER_PROFILE_VERSION_MISMATCH");
     const checkpoint = def.checkpointSchema.parse(record.checkpoint);
     if (checkpoint.attempt_id !== child.name) throw new Error("LEDGER_REVIEW_REQUIRED");
     const summaryPath = join(path, "summary.json"); let summary: RawProbeSummary | null = null;
@@ -94,7 +100,27 @@ export async function inspectPrivateProbeLedger(projectRoot: string, probe: Exec
   for (const other of EXECUTABLE_PROBES) if (await exists(join(base, other.toLowerCase(), "active.lock"))) throw new Error("LEDGER_BUSY_OR_REVIEW_REQUIRED");
   return ledger(attempts, probe);
 }
-export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint, source: SourceRecord | null = null): ProbeStore {
+async function readHistoricalP03(attempts: string) {
+  const folder = join(attempts, HISTORICAL_P03_ATTEMPT);
+  const record = await privateJson(join(folder, "attempt.json")) as { profile?: unknown; checkpoint?: unknown };
+  if (!P03ProfileSchema.safeParse(record.profile).success) throw new Error("HISTORICAL_P03_REVIEW_REQUIRED");
+  const cp = P03CheckpointSchema.parse(record.checkpoint);
+  const result = await privateJson(join(folder, "summary.json")) as { summary?: unknown };
+  const summary = P03SummarySchema.parse(result.summary);
+  if (cp.attempt_id !== HISTORICAL_P03_ATTEMPT || summary.attempt_id !== cp.attempt_id ||
+      summary.status !== "UNKNOWN" || summary.reason !== "RESPONSE_TOO_LARGE" || summary.dispatches !== 1 ||
+      summary.http_status !== 200 || summary.response_bytes !== 65_537 || summary.raw_saved_privately)
+    throw new Error("HISTORICAL_P03_REVIEW_REQUIRED");
+  return { attempt_id: cp.attempt_id, profile_revision: P03_PROFILE.revision, status: summary.status,
+    reason: summary.reason, dispatches: summary.dispatches, raw_saved_privately: summary.raw_saved_privately };
+}
+export async function inspectHistoricalP03ForRecovery(projectRoot: string) {
+  const history = await inspectPrivateProbeLedger(projectRoot, "P03");
+  if (history.reserved_attempts !== 1 || history.recorded_dispatches !== 1 || history.unresolved_attempts !== 0 ||
+      history.last_attempt_id !== HISTORICAL_P03_ATTEMPT) throw new Error("HISTORICAL_P03_REVIEW_REQUIRED");
+  return readHistoricalP03(await checkedDirectory(projectRoot, "P03"));
+}
+export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint, source: SourceRecord | null = null): ProbeStore {
   const def = probeDefinition(probe);
   const id = checkpoint.attempt_id; let reserved: string | null = null; let lockPath: string | null = null; let globalLock: string | null = null;
   async function releaseLock() {
@@ -130,9 +156,10 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
           if (p01.reserved_attempts !== 1 || p01.recorded_dispatches !== 1 || p01.unresolved_attempts !== 0)
             throw new Error("P01_REUSE_REVIEW_REQUIRED");
         }
-        if (probe === "P03" || probe === "P04") {
-          const priorProbes = probe === "P03" ? ["P01", "P02", "P04"] as const : ["P01", "P02"] as const;
-          const reviewed: Readonly<Partial<Record<ExecutableProbe, number>>> = (checkpoint as P03Checkpoint | P04Checkpoint).prior_probe_dispatches_reviewed;
+        if (probe === "P03" || probe === "P04" || probe === "P03R") {
+          const priorProbes = probe === "P03R" ? ["P01", "P02", "P03", "P04"] as const :
+            probe === "P03" ? ["P01", "P02", "P04"] as const : ["P01", "P02"] as const;
+          const reviewed: Readonly<Partial<Record<ExecutableProbe, number>>> = (checkpoint as P03Checkpoint | P04Checkpoint | P03RCheckpoint).prior_probe_dispatches_reviewed;
           for (const prior of priorProbes) {
             const previous = await ledger(await checkedDirectory(projectRoot, prior), prior);
             if (previous.reserved_attempts !== reviewed[prior] || previous.recorded_dispatches !== reviewed[prior] ||
@@ -140,11 +167,14 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
               throw new Error("PRIOR_ATTEMPTS_NOT_REVIEWED");
           }
         }
+        if (probe === "P03R") await readHistoricalP03(await checkedDirectory(projectRoot, "P03"));
         const previous = await ledger(attempts, probe, id);
         if (previous.unresolved_attempts || previous.reserved_attempts !== checkpoint.prior_reserved_attempts ||
             previous.last_attempt_id !== checkpoint.previous_attempt_id) throw new Error("PRIOR_ATTEMPTS_NOT_REVIEWED");
         const folder = join(attempts, id); await mkdir(folder, { mode: 0o700 }); created = true;
-        await exclusiveWrite(join(folder, "attempt.json"), JSON.stringify({ profile: def.profile, checkpoint, source,
+        await exclusiveWrite(join(folder, "attempt.json"), JSON.stringify({
+          ...(probe === "P03R" ? { record_revision: "tastegate.probe-attempt.v3", profile_revision: P03R_PROFILE.revision,
+            max_response_bytes: def.maxResponseBytes } : {}), profile: def.profile, checkpoint, source,
           previous_accounting: previous, maximum_dispatches: 1, reserved_utc: new Date().toISOString(),
           state: "RESERVED_NO_AUTOMATIC_REPLAY" }, null, 2) + "\n");
         reserved = folder;
@@ -155,7 +185,7 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
       }
     },
     async saveRaw(bytes: Uint8Array) {
-      if (!reserved || bytes.byteLength > 65_536) throw new Error("PRIVATE_EVIDENCE_UNAVAILABLE");
+      if (!reserved || bytes.byteLength > def.maxResponseBytes) throw new Error("PRIVATE_EVIDENCE_UNAVAILABLE");
       await exclusiveWrite(join(reserved, "response.raw.json"), bytes);
     },
     async saveSummary(summary: RawProbeSummary) {
@@ -200,6 +230,7 @@ export async function liveProbeFromPrivateCheckpoint(projectRoot: string, probe:
       "src/qloo/raw-probe-runner.ts", "src/qloo/raw-probe-store.ts", "src/qloo/probe-definitions.ts",
       "src/qloo/p02-profile.ts", "src/qloo/p02-private-store.ts", "src/qloo/p01-reuse.ts", "src/qloo/search-observation.ts",
       "src/qloo/p03-profile.ts", "src/qloo/p03-private-store.ts", "scripts/qloo-probe-p03.mjs",
+      "src/qloo/p03r-profile.ts", "src/qloo/p03r-private-store.ts", "src/qloo/probe-cli-contract.ts", "scripts/qloo-probe-p03r.mjs",
       "src/qloo/p04-profile.ts", "src/qloo/p04-private-store.ts",
       "scripts/probe-cli.mjs", "scripts/qloo-probe.mjs", "scripts/qloo-probe-p02.mjs", "scripts/qloo-probe-p04.mjs", "package.json", "package-lock.json"])
       files.push({ path, sha256: createHash("sha256").update(await readFile(resolve(projectRoot, path))).digest("hex") });

@@ -164,7 +164,8 @@ it("provides default preview and zero-reservation preflight using only synthetic
   await writeFile(join(root, ".gitignore"), ".env*\nprivate/\n.cache/\n");
   await writeFile(join(root, ".env.local"), "QLOO_MODE=live\nQLOO_API_KEY=" + key + "\n", { mode: 0o600 });
   for (const name of ["boundary-error", "server-config", "p01-profile", "p01-local-env", "p01-runner", "p01-private-store",
-    "p02-profile", "p02-private-store", "p03-profile", "p03-private-store", "p04-profile", "p04-private-store", "probe-definitions",
+    "p02-profile", "p02-private-store", "p03-profile", "p03-private-store", "p04-profile", "p04-private-store",
+    "p03r-profile", "p03r-private-store", "probe-cli-contract", "probe-definitions",
     "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
     const target = join(root, "src/qloo", name + ".ts"); await mkdir(dirname(target), { recursive: true });
     await copyFile(resolve("src/qloo", name + ".ts"), target);
