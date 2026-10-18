@@ -123,7 +123,7 @@ describe("P02 is a separately confirmed fixed film probe", () => {
     expect((await runner.run({ checkpoint })).reason).toBe("CONCURRENCY_LIMIT"); expect(send).toHaveBeenCalledTimes(1);
   });
   it("does not register P05-P10 or arbitrary HTTP profiles", () => {
-    for (const id of ["P05", "P10", "https://example.test"]) expect(() => probeDefinition(id as never)).toThrow("PROBE_NOT_EXECUTABLE");
+    for (const id of ["P06", "P10", "https://example.test"]) expect(() => probeDefinition(id as never)).toThrow("PROBE_NOT_EXECUTABLE");
   });
 });
 describe("strict observed fields and independent entity review", () => {

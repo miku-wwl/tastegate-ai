@@ -1,0 +1,24 @@
+# Phase 1B.4 — Local P03-R branch identity review
+
+2026-10-19, Pacific/Auckland. **NYC branch identity CORROBORATED FOR THIS LOCAL REVIEW. No Qloo Entity ID is admitted to the application.** The immutable P03-R transport summary remains UNKNOWN / SCHEMA_REVIEW_REQUIRED / NOT_REVIEWED; this separate review does not rewrite it. No Qloo request was repeated.
+
+Reviewed the original privately captured response for attempt `4a3bc272-29d7-4e29-aee5-1cef45caaff2`, against independently retrieved public information. The [venue's contact page](https://www.bluenotejazz.com/nyc/contact/) and [FAQ](https://www.bluenotejazz.com/nyc/faqs/) identify the NYC location at **131 West 3rd Street, New York, NY 10012**. Full public page copies and comparison details stay in the private local review folder; sanitized paths/types/comparison booleans are packaged.
+
+| Observed private field | Provider claim / discrepancy | Independent comparison and conclusion |
+| --- | --- | --- |
+| `$.results[].name` | Not literally the full query | Matches a public short venue alias. A name alone does not resolve a branch. |
+| `$.results[].properties.address` | Not literally the proposed full address | Matches after explicitly expanding/contracting West/W and Street/St and ignoring case/punctuation. House number, street, city, state and postal code agree. This is supporting evidence, not the identity decision by itself. |
+| `$.results[].properties.geocode.city/country_code` | NYC/US strings | Consistent with the official location. Provider strings alone would not establish geography. |
+| `$.results[].properties.phone/website` | Contact/website claims present | Phone digits match the official contact after country-prefix/punctuation handling; website host belongs to the official venue domains. No provider-supplied link was automatically followed. |
+| `$.results[].properties.external.tripadvisor.id` | A prefixed listing reference | Independently found the Blue Note NYC public restaurant listing by venue-name search, then opened it. Its displayed venue/address/phone agree. The observed reference equals that listing's identifier with its explicit `d` prefix; the earlier plain-number comparison failed because it omitted that prefix. Full reference and listing URL remain private. |
+| `$.results[].properties.external.google_place.id` | Opaque identifier representation | Its hexadecimal payload agrees with the tail of a map reference linked by the official contact page after explicitly accounting for the public `0x` prefix. This is a representation comparison, not a documented Qloo-to-Google identifier crosswalk. |
+| `$.results[].properties.external.google_place.place_id` | Separate nonblank string | Not present on the retrieved official page; independent Google Place ID verification remains UNKNOWN. No Google Places API request or private-reference lookup was issued. |
+| `$.results[].location.lat/lon` | Finite, numerically valid coordinates | Under conventional decimal-degree interpretation, the point is within 100 m but not within 10 m of the map point linked by the official venue. This supports approximate vicinity, not entrance accuracy. Qloo's coordinate reference system and physical position were not independently surveyed. |
+
+The earlier literal name/address mismatches are retained as facts and explained through explicit alias/abbreviation review, rather than silently erased. Reference representations and the coordinate offset remain visible limitations. No demonstrated wrong-city or wrong-branch conflict emerged from the reviewed address, contacts and independently found listing. Google Place ID equivalence remains unresolved; no equivalence was invented.
+
+The branch conclusion is a reviewer judgment combining address components, official contact/website agreement and the independently identified Tripadvisor listing. Approximate coordinates and the official map link provide limited corroboration. It is not based on rank, result count, popularity, tags or normalized similarity alone, and is not a claim of infallible independent ground truth or independent upstream data lineage.
+
+`selected_entity_id` remains null in the product observation. No place projection, production identity/geography gate, trusted ID registry or LiveQlooAdapter was enabled. Venue opening status, current availability, ratings, cultural affinity and individual preference remain unestablished. The accepted branch does not become a P05 parameter: the first P05 request contains no venue constraint or NYC filter.
+
+All 30 historical private evidence files, including the original P03 v1 UNKNOWN / RESPONSE_TOO_LARGE outcome and P03-R raw capture/checkpoint/approval, remain byte-identical. Public sanitized evidence omits raw names/addresses/coordinates, provider IDs and private evidence hashes. See the [Radiohead review](PHASE1B4_RADIOHEAD_IDENTITY_REVIEW.md) and [P05 readiness and actual checks](PHASE1B4_P05_READINESS.md).

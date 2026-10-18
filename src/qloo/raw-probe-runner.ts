@@ -5,6 +5,7 @@ import { assertServer, classifyHttp } from "./boundary-error";
 import { QlooServerConfig } from "./server-config";
 import { ProbeReasonSchema, type ProbeReason } from "./p01-profile";
 import { probeDefinition, type ExecutableProbe, type RawProbeSummary } from "./probe-definitions";
+import { matchesP05Signal, type P05SignalBinding } from "./p05-signal";
 import { unsafeP01Diagnostics } from "./p01-local-env";
 
 export interface ProbeRequest {
@@ -48,7 +49,7 @@ function rejectReflection(bytes: Uint8Array, key: string, raw: unknown): void {
 }
 
 function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe", loadConfig: () => QlooServerConfig,
-  send: LocalProbeTransport["send"], store: ProbeStore) {
+  send: LocalProbeTransport["send"], store: ProbeStore, p05Signal?: P05SignalBinding) {
   const def = probeDefinition(probe);
   let started = false; let busy = false;
   return Object.freeze({
@@ -58,6 +59,7 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
       if (!def.profileSchema.safeParse(options.profile ?? def.profile).success) return def.blocked("INVALID_PROFILE");
       if (!def.validCheckpoint(options.checkpoint)) return def.blocked();
       const checkpoint = def.checkpointSchema.parse(options.checkpoint);
+      if (probe === "P05" && !matchesP05Signal(checkpoint, p05Signal)) return def.blocked("EVIDENCE_UNAVAILABLE");
       if (busy) return def.blocked("CONCURRENCY_LIMIT");
       if (started) return def.blocked("CALL_BUDGET_EXHAUSTED");
       if (options.signal?.aborted) return def.blocked("CANCELLED");
@@ -75,7 +77,8 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
         return result;
       }
       started = true;
-      const url = new URL(def.profile.path, def.profile.origin); url.search = new URLSearchParams(def.profile.params).toString();
+      const url = new URL(def.profile.path, def.profile.origin); url.search = new URLSearchParams(probe === "P05" ?
+        { ...def.profile.params, "signal.interests.entities": p05Signal!.entityId } : def.profile.params).toString();
       const controller = new AbortController(); const began = performance.now(); const deadline = began + config.requestTimeoutMs;
       let timer: ReturnType<typeof setTimeout> | undefined; let cancel: (() => void) | undefined;
       let httpStatus: number | null = null; let responseBytes: number | null = null; let saved = false;
@@ -126,10 +129,10 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
   });
 }
 
-export function createLocalRawProbeRunner(probe: ExecutableProbe, config: QlooServerConfig, transport: LocalProbeTransport, store: ProbeStore) {
+export function createLocalRawProbeRunner(probe: ExecutableProbe, config: QlooServerConfig, transport: LocalProbeTransport, store: ProbeStore, p05Signal?: P05SignalBinding) {
   assertServer();
   if (transport.kind !== "local-test-double") throw new Error("LOCAL_TEST_DOUBLE_REQUIRED");
-  return runner(probe, "offline_test", () => config, (r) => transport.send(r), store);
+  return runner(probe, "offline_test", () => config, (r) => transport.send(r), store, p05Signal);
 }
 
 // Deliberately no transport injection for live mode. Node HTTPS issues one request, does not
@@ -150,9 +153,10 @@ function sendNative(request: ProbeRequest): Promise<Response> {
 }
 let liveBusy = false; const liveSpent = new Set<string>();
 export async function executeLiveRawProbe(probe: ExecutableProbe, options: { checkpoint?: unknown; profile?: unknown; signal?: AbortSignal }, store: ProbeStore,
-  trustedLocalConfig?: QlooServerConfig): Promise<RawProbeSummary> {
+  trustedLocalConfig?: QlooServerConfig, p05Signal?: P05SignalBinding): Promise<RawProbeSummary> {
   assertServer(); const def = probeDefinition(probe);
   if (!def.validCheckpoint(options.checkpoint)) return def.blocked();
+  if (probe === "P05" && !matchesP05Signal(options.checkpoint, p05Signal)) return def.blocked("EVIDENCE_UNAVAILABLE");
   if (unsafeP01Diagnostics()) return def.blocked("UNSAFE_DIAGNOSTICS");
   const id = probe + ":" + def.checkpointSchema.parse(options.checkpoint).attempt_id;
   if (liveBusy) return def.blocked("CONCURRENCY_LIMIT");
@@ -160,7 +164,7 @@ export async function executeLiveRawProbe(probe: ExecutableProbe, options: { che
   liveBusy = true;
   let releaseSlot = true;
   try {
-    const result = await runner(probe, "live_probe", () => trustedLocalConfig ?? QlooServerConfig.load(), sendNative, store).run(options);
+    const result = await runner(probe, "live_probe", () => trustedLocalConfig ?? QlooServerConfig.load(), sendNative, store, p05Signal).run(options);
     if (result.dispatches === 1) liveSpent.add(id);
     releaseSlot = result.transport_settled; return result;
   } catch { liveSpent.add(id); releaseSlot = false; throw new Error("PROBE_EXECUTION_INTERRUPTED"); }

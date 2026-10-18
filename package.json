@@ -17,7 +17,8 @@
     "probe:p02": "node scripts/qloo-probe-p02.mjs",
     "probe:p03": "node scripts/qloo-probe-p03.mjs",
     "probe:p03r": "node scripts/qloo-probe-p03r.mjs",
-    "probe:p04": "node scripts/qloo-probe-p04.mjs"
+    "probe:p04": "node scripts/qloo-probe-p04.mjs",
+    "probe:p05": "node scripts/qloo-probe-p05.mjs"
   },
   "dependencies": {
     "next": "16.4.2",
