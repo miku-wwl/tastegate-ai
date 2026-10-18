@@ -7,6 +7,7 @@ import { executeLiveRawProbe, type ProbeStore } from "./raw-probe-runner";
 import { inspectSavedP01 } from "./p01-reuse";
 import type { P01Checkpoint } from "./p01-profile";
 import type { P02Checkpoint } from "./p02-profile";
+import type { P03Checkpoint } from "./p03-profile";
 import type { P04Checkpoint } from "./p04-profile";
 import { loadLocalP01Config } from "./p01-local-env";
 
@@ -55,7 +56,7 @@ async function ledger(attempts: string, probe: ExecutableProbe, ownedLock?: stri
   if (legacy) throw new Error("LEGACY_ATTEMPT_REVIEW_REQUIRED");
   const children = await readdir(attempts, { withFileTypes: true });
   if (children.length > 1000) throw new Error("LEDGER_REVIEW_REQUIRED");
-  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P04Checkpoint; summary: RawProbeSummary | null }> = [];
+  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint; summary: RawProbeSummary | null }> = [];
   for (const child of children) {
     if (!child.isDirectory() || child.isSymbolicLink() || !def.checkpointSchema.shape.attempt_id.safeParse(child.name).success)
       throw new Error("LEDGER_REVIEW_REQUIRED");
@@ -93,7 +94,7 @@ export async function inspectPrivateProbeLedger(projectRoot: string, probe: Exec
   for (const other of EXECUTABLE_PROBES) if (await exists(join(base, other.toLowerCase(), "active.lock"))) throw new Error("LEDGER_BUSY_OR_REVIEW_REQUIRED");
   return ledger(attempts, probe);
 }
-export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P04Checkpoint, source: SourceRecord | null = null): ProbeStore {
+export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint, source: SourceRecord | null = null): ProbeStore {
   const def = probeDefinition(probe);
   const id = checkpoint.attempt_id; let reserved: string | null = null; let lockPath: string | null = null; let globalLock: string | null = null;
   async function releaseLock() {
@@ -129,11 +130,12 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
           if (p01.reserved_attempts !== 1 || p01.recorded_dispatches !== 1 || p01.unresolved_attempts !== 0)
             throw new Error("P01_REUSE_REVIEW_REQUIRED");
         }
-        if (probe === "P04") {
-          for (const prior of ["P01", "P02"] as const) {
+        if (probe === "P03" || probe === "P04") {
+          const priorProbes = probe === "P03" ? ["P01", "P02", "P04"] as const : ["P01", "P02"] as const;
+          const reviewed: Readonly<Partial<Record<ExecutableProbe, number>>> = (checkpoint as P03Checkpoint | P04Checkpoint).prior_probe_dispatches_reviewed;
+          for (const prior of priorProbes) {
             const previous = await ledger(await checkedDirectory(projectRoot, prior), prior);
-            const reviewed = (checkpoint as P04Checkpoint).prior_probe_dispatches_reviewed[prior];
-            if (previous.reserved_attempts !== reviewed || previous.recorded_dispatches !== reviewed ||
+            if (previous.reserved_attempts !== reviewed[prior] || previous.recorded_dispatches !== reviewed[prior] ||
                 previous.unresolved_attempts !== 0 || previous.last_attempt_id === id)
               throw new Error("PRIOR_ATTEMPTS_NOT_REVIEWED");
           }
@@ -197,6 +199,7 @@ export async function liveProbeFromPrivateCheckpoint(projectRoot: string, probe:
       "src/qloo/p01-runner.ts", "src/qloo/p01-private-store.ts", "src/qloo/p01-local-env.ts",
       "src/qloo/raw-probe-runner.ts", "src/qloo/raw-probe-store.ts", "src/qloo/probe-definitions.ts",
       "src/qloo/p02-profile.ts", "src/qloo/p02-private-store.ts", "src/qloo/p01-reuse.ts", "src/qloo/search-observation.ts",
+      "src/qloo/p03-profile.ts", "src/qloo/p03-private-store.ts", "scripts/qloo-probe-p03.mjs",
       "src/qloo/p04-profile.ts", "src/qloo/p04-private-store.ts",
       "scripts/probe-cli.mjs", "scripts/qloo-probe.mjs", "scripts/qloo-probe-p02.mjs", "scripts/qloo-probe-p04.mjs", "package.json", "package-lock.json"])
       files.push({ path, sha256: createHash("sha256").update(await readFile(resolve(projectRoot, path))).digest("hex") });

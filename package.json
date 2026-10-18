@@ -15,6 +15,7 @@
     "browser:install": "node scripts/playwright.mjs install chromium",
     "probe:p01": "node scripts/qloo-probe.mjs",
     "probe:p02": "node scripts/qloo-probe-p02.mjs",
+    "probe:p03": "node scripts/qloo-probe-p03.mjs",
     "probe:p04": "node scripts/qloo-probe-p04.mjs"
   },
   "dependencies": {
