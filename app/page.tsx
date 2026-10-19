@@ -1,3 +1,3 @@
-import Inspector from "./inspector";
+import TasteGateApp from "./tastegate-app";
 
-export default function Page() { return <Inspector />; }
+export default function Page() { return <TasteGateApp />; }

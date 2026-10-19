@@ -1,9 +1,10 @@
-import type { Entity, Snapshot } from "../domain/contracts";
+import type { Capture, Entity, InsightsPolicy, Snapshot } from "../domain/contracts";
 
 export type Signals = { preference_entity_ids: string[]; preference_tag_ids: string[] };
 export type LookupRequest = { query: string; requested_kind: "artist" | "movie" | "place" };
 export type RankRequest = Signals & { candidate_entity_ids: string[] };
-export type DiscoveryRequest = Signals & { exclude_entity_ids: string[] };
+export type DiscoveryRequest = Signals & { exclude_entity_ids: string[];
+  signal_scope?: InsightsPolicy["signal_scope"]; take?: number; exclusion?: InsightsPolicy["discovery_exclusion"] };
 export interface CallContext { runId: string; callId: string; signal: AbortSignal }
 export type FixtureObservation = { source_mode: "fixture"; fixture_id: string; snapshot: Snapshot };
 export interface FixtureQlooAdapter {
@@ -13,6 +14,18 @@ export interface FixtureQlooAdapter {
   searchTags(query: string, context: CallContext): Promise<FixtureObservation>;
   rankPlaces(request: RankRequest, context: CallContext): Promise<FixtureObservation>;
   discoverPlaces(request: DiscoveryRequest, context: CallContext): Promise<FixtureObservation>;
+}
+
+// Replays immutable, owner-approved Qloo recordings. It performs no network I/O: a request without an
+// exactly matching verified recording yields an explicit `unavailable` snapshot with a null capture.
+export type RecordedObservation = { source_mode: "recorded_live"; dataset_id: string; capture: Capture | null; snapshot: Snapshot };
+export interface RecordedQlooAdapter {
+  readonly mode: "recorded_live";
+  readonly datasetId: string;
+  searchEntity(request: LookupRequest, context: CallContext): Promise<RecordedObservation>;
+  searchTags(query: string, context: CallContext): Promise<RecordedObservation>;
+  rankPlaces(request: RankRequest, context: CallContext): Promise<RecordedObservation>;
+  discoverPlaces(request: DiscoveryRequest, context: CallContext): Promise<RecordedObservation>;
 }
 
 // Future semantic adapter port. Phase 1B adds isolated offline transport checks and a
@@ -28,7 +41,7 @@ export interface LiveQlooAdapter {
 export class LiveExecutionBlockedError extends Error {
   constructor() { super("Live Qloo execution is blocked in Phase 1A; no live adapter is implemented."); }
 }
-export function requireFixture(adapter: FixtureQlooAdapter | LiveQlooAdapter): asserts adapter is FixtureQlooAdapter {
+export function requireFixture(adapter: FixtureQlooAdapter | LiveQlooAdapter | RecordedQlooAdapter): asserts adapter is FixtureQlooAdapter {
   if (adapter.mode !== "fixture") throw new LiveExecutionBlockedError();
 }
 export type FixtureWorld = {

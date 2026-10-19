@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { POST } from "../app/api/audit/route";
-import { AuditReportSchema } from "../src/domain/report-schema";
+import { existsSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { GET, POST } from "../app/api/audit/route";
+import { AuditReportSchema, ProviderAuditReportSchema } from "../src/domain/report-schema";
 
 function request(body: unknown) {
   return new Request("http://127.0.0.1/api/audit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -22,5 +23,37 @@ describe("offline HTTP boundary", () => {
     expect((await POST(malformed)).status).toBe(400);
     expect((await POST(new Request("http://127.0.0.1/api/audit", { method: "POST", body: "hello" }))).status).toBe(415);
     expect((await POST(new Request("http://127.0.0.1/api/audit", { method: "POST", headers: { "Content-Type": "application/jsonp" }, body: "{}" }))).status).toBe(415);
+  });
+});
+
+// The real route reads the owner's private recordings only when they exist on this machine.
+const recordedHere = existsSync("private/qloo-probes/p05/attempts/154bd4c0-ea64-49c5-ad95-cb57efd7647a/response.raw.json");
+describe("catalog and recorded-evidence boundary", () => {
+  it("publishes modes, authored scenario inputs and public recording metadata only", async () => {
+    const response = await GET(); expect(response.headers.get("cache-control")).toBe("no-store");
+    const catalog = await response.json() as { modes: Record<string, string>; scenarios: Array<{ id: string; mode: string }>; recorded_history: Array<Record<string, unknown>>; live_gate: { status: string } };
+    expect(catalog.modes).toEqual({ synthetic: "AVAILABLE", recorded_live: recordedHere ? "AVAILABLE" : "UNAVAILABLE", live: "LOCKED" });
+    expect(catalog.scenarios.map((s) => s.mode)).toEqual(["recorded_live", ...Array(6).fill("fixture")]);
+    expect(catalog.live_gate.status).toBe("OWNER_APPROVAL_REQUIRED");
+    for (const h of catalog.recorded_history) expect(Object.keys(h).sort()).toEqual(["attempt_id", "endpoint", "http_status", "outcome", "probe", "recorded_at", "response_bytes"]);
+    expect(JSON.stringify(catalog)).not.toMatch(/qloo-ref:|sha256|entity_id/);
+  });
+  it.each([
+    { scenario: "nyc-evening", confirmations: [] },
+    { scenario: "recorded-nyc-evening", confirmations: [{ target_id: "unknown-slot", decision: "skip" }] },
+    { scenario: "recorded-nyc-evening", confirmations: [{ target_id: "p1", decision: "select", ref: "raw-provider-id" }] },
+    { scenario: "recorded-nyc-evening", mode: "live" },
+    { scenario: "recorded-nyc-evening", insights_policy: { signal_scope: "all_confirmed" } },
+  ])("rejects untrusted recorded/confirmation input %j", async (body) => {
+    expect((await POST(request(body))).status).toBe(400);
+  });
+  it("runs the recorded scenario only from verified private recordings, never contacting Qloo", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const response = await POST(request({ scenario: "recorded-nyc-evening" }));
+    if (!recordedHere) { expect(response.status).toBe(503); expect(await response.json()).toEqual({ error: "RECORDED_EVIDENCE_UNAVAILABLE" }); return; }
+    expect(response.status).toBe(200);
+    const report = ProviderAuditReportSchema.parse(await response.json());
+    expect(report).toMatchObject({ source_mode: "recorded_live", stop_reason: "NEEDS_INPUT", usage: { qloo_dispatches: 0 } });
+    expect(fetchSpy).not.toHaveBeenCalled(); fetchSpy.mockRestore();
   });
 });

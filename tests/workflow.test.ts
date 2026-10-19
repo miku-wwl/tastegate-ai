@@ -91,6 +91,33 @@ describe("Audit -> Repair -> Revalidate", () => {
     expect(r.stop_reason).toBe("NEEDS_INPUT"); expect(r.unresolved_preferences).toEqual(["p2", "p3"]);
     expect(r.usage.fixture_calls).toBe(1); expect(r.final_status).toBe("UNKNOWN");
   });
+  it("missing taste evidence alone is a soft gate: a verified venue is never replaced", async () => {
+    const s = getScenario("missing-evidence"); const base = createFixtureAdapter(s.world); const discover = vi.fn(base.discoverPlaces);
+    const r = await runAudit(s.input, { ...base, discoverPlaces: discover });
+    expect(r.original_audits[0]).toMatchObject({ resolution: "resolved", hard_constraints: "pass", evidence_coverage: "missing", verdict: "UNKNOWN" });
+    expect(discover).not.toHaveBeenCalled(); expect(r.usage.repair_rounds).toBe(0); expect(r.repairs).toEqual([]);
+  });
+  it("discovery facts can reject an unconfirmed replacement but never pass it", async () => {
+    const s = getScenario("repair-fails"); const base = createFixtureAdapter(s.world);
+    const unconfirmed = { ...base, async searchEntity(req: Parameters<typeof base.searchEntity>[0], ctx: Parameters<typeof base.searchEntity>[1]) {
+      const result = await base.searchEntity(req, ctx);
+      if (req.query === "SYNTHETIC Midtown Listening Cafe" && result.snapshot.kind === "entity_lookup") result.snapshot.matches = [];
+      return result;
+    } };
+    const rejected = await runAudit(s.input, unconfirmed);
+    const discoveryRef = rejected.evidence.find((e) => e.snapshot.kind === "discover_places")!.evidence_id;
+    expect(rejected.repairs[0]!.revalidation).toMatchObject({ resolution: "unresolved", verdict: "BLOCKED" });
+    expect(rejected.repairs[0]!.revalidation.findings).toContainEqual(expect.objectContaining({ code: "CITY_MISMATCH", state: "fail",
+      evidence_refs: [rejected.evidence[0]!.evidence_id, discoveryRef] }));
+    const ok = getScenario("wrong-city-repair"); const okBase = createFixtureAdapter(ok.world);
+    const passing = await runAudit(ok.input, { ...okBase, async searchEntity(req, ctx) {
+      const result = await okBase.searchEntity(req, ctx);
+      if (req.query === "SYNTHETIC Midtown Listening Cafe" && result.snapshot.kind === "entity_lookup") result.snapshot.matches = [];
+      return result;
+    } });
+    expect(passing.repairs[0]!.accepted).toBe(false);
+    expect(passing.repairs[0]!.revalidation.findings.find((f) => f.constraint_id === "c1")).toMatchObject({ code: "FACT_UNCONFIRMED", state: "unknown" });
+  });
   it("explicit count violations cannot be repaired merely by swapping venues", async () => {
     const s = getScenario("nyc-evening"); s.input.constraints.find((c) => c.kind === "max_items")!.value = 2;
     const r = await runAudit(s.input, createFixtureAdapter(s.world));
