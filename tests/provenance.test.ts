@@ -42,7 +42,7 @@ describe("forged provenance fails closed", () => {
     if (attack === "pointer") r.evidence[0]!.pointer = "/nonexistent";
     if (attack === "live") Object.assign(r, { source_mode: "live" });
     if (attack === "fake-upstream-id") Object.assign(r.evidence[0]!, { upstream_request_id: "invented-provider-id" });
-    if (attack === "false-rank") r.original_audits[0]!.cultural_relevance!.ordinal_rank = 2;
+    if (attack === "false-rank") r.original_audits[0]!.cultural_relevance!.ordinal_rank += 1;
     if (attack === "omitted-original") r.original_audits.pop();
     if (attack === "false-completion") { r.final_status = "PASS"; r.completion = "complete"; }
     if (attack === "wrong-fact-reference") r.original_audits[1]!.findings[0]!.evidence_refs = [r.evidence[1]!.evidence_id];

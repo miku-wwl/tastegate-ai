@@ -16,7 +16,7 @@ describe("Audit -> Repair -> Revalidate", () => {
     expect(r.before_status).toBe("BLOCKED"); expect(r.final_status).toBe("UNKNOWN"); expect(r.completion).toBe("partial");
     expect(r.final_candidate_ids).toContain(r.repairs[0]!.replacement_candidate_id);
     expect(r.final_candidate_ids).not.toContain("original-3");
-    expect(r.usage).toMatchObject({ fixture_calls: 10, repair_rounds: 1, qloo_dispatches: 0, llm_dispatches: 0 });
+    expect(r.usage).toMatchObject({ fixture_calls: 9, repair_rounds: 1, qloo_dispatches: 0, llm_dispatches: 0 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
   it("a valid low-ranked item is not rejected and missing explanation is honest", async () => {
@@ -130,7 +130,7 @@ describe("trusted budgets, failures and no live fallback", () => {
   it.each(Array.from({ length: 15 }, (_, i) => i))("honors a %i-call ceiling including repair reservation", async (maxCalls) => {
     const s = getScenario("nyc-evening"); const r = await runAudit(s.input, createFixtureAdapter(s.world), { maxCalls });
     expect(r.usage.fixture_calls).toBeLessThanOrEqual(maxCalls); expect(r.usage.repair_rounds).toBeLessThanOrEqual(1);
-    if (maxCalls < 10) { expect(r.completion).toBe("partial"); expect(r.repairs.every((x) => !x.accepted)).toBe(true); }
+    if (maxCalls < 9) { expect(r.completion).toBe("partial"); expect(r.repairs.every((x) => !x.accepted)).toBe(true); }
   });
   it("invalid or expanded host limits reject before dispatch", async () => {
     const s = getScenario("valid-only"); const base = createFixtureAdapter(s.world); const search = vi.fn(base.searchEntity);

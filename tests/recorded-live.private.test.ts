@@ -41,8 +41,9 @@ describe.skipIf(!available)("recorded Qloo evidence (owner-local private capture
   it("verifies every capture, then stops for explicit identity confirmation without network I/O", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const set = await loadRecordedEvidence(process.cwd());
+    // P06 appears only once its single approved request has been executed, reviewed and sealed.
     expect(set.history.map((h) => [h.probe, h.outcome])).toEqual([["P01", "REPLAYABLE"], ["P02", "REPLAYABLE"],
-      ["P03", "RESPONSE_TOO_LARGE_NOT_SAVED"], ["P03R", "REPLAYABLE"], ["P04", "REPLAYABLE"], ["P05", "REPLAYABLE"]]);
+      ["P03", "RESPONSE_TOO_LARGE_NOT_SAVED"], ["P03R", "REPLAYABLE"], ["P04", "REPLAYABLE"], ["P05", "REPLAYABLE"], ...(set.shortlist.state === "READY" ? [["P06", "REPLAYABLE"]] : [])]);
     const r = await runRecordedAudit(getRecordedScenarioInput(), createRecordedAdapter(set), options());
     expect(r.stop_reason).toBe("NEEDS_INPUT");
     expect(r.pending_confirmations.map((p) => [p.target_id, p.candidate_ids.length])).toEqual([["p1", 5], ["p2", 5], ["p3", 5], ["original-1", 1]]);
@@ -52,21 +53,28 @@ describe.skipIf(!available)("recorded Qloo evidence (owner-local private capture
   });
   it("after confirmation, a culturally discovered replacement is rejected on the provider's own geography", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const adapter = createRecordedAdapter(await loadRecordedEvidence(process.cwd()));
+    const set = await loadRecordedEvidence(process.cwd()); const ranked = set.shortlist.state === "READY"; const adapter = createRecordedAdapter(set);
     const first = await runRecordedAudit(getRecordedScenarioInput(), adapter, options());
     const r = await runRecordedAudit(getRecordedScenarioInput(), adapter, options(choose(first)));
     expect(ProviderAuditReportSchema.parse(r)).toEqual(r);
     expect(r.preference_resolution.map((p) => p.status)).toEqual(["resolved", "resolved", "resolved"]);
     const [venue, unresolvedSlot] = r.original_audits;
-    expect(venue).toMatchObject({ resolution: "resolved", hard_constraints: "pass", evidence_coverage: "missing", verdict: "UNKNOWN" });
+    // Without a sealed shortlist ranking a verified venue has no taste evidence (UNKNOWN); with it, the venue and the proposal are
+    // ranked in ONE query, and the venue is REVIEW (identity and constraints verified, claims still open).
+    if (ranked) expect(venue).toMatchObject({ resolution: "resolved", hard_constraints: "pass", evidence_coverage: "partial", verdict: "REVIEW" });
+    else expect(venue).toMatchObject({ resolution: "resolved", hard_constraints: "pass", evidence_coverage: "missing", verdict: "UNKNOWN" });
     expect(unresolvedSlot!.findings).toContainEqual(expect.objectContaining({ code: "EVIDENCE_UNAVAILABLE" }));
     expect(r.repairs).toHaveLength(1);
     const repair = r.repairs[0]!;
     expect(repair).toMatchObject({ replaces: "original-2", accepted: false });
-    expect(repair.revalidation.verdict).toBe("BLOCKED");
+    expect(repair.revalidation.verdict).toBe("BLOCKED"); // a high rank never rescues a failed hard constraint
+    if (ranked) {
+      const ranks = [venue!.cultural_relevance?.ordinal_rank, repair.revalidation.cultural_relevance?.ordinal_rank];
+      expect([...ranks].sort()).toEqual([1, 2]); // one query, two distinct positions; the order itself is not asserted here
+    }
     expect(repair.revalidation.findings.filter((f) => f.state === "fail").map((f) => f.code)).toEqual(["CITY_MISMATCH", "COUNTRY_MISMATCH"]);
     expect(r).toMatchObject({ before_status: "UNKNOWN", final_status: "UNKNOWN", completion: "partial", stop_reason: "COMPLETE" });
-    expect(r.usage).toMatchObject({ qloo_dispatches: 0, adapter_calls: 9, recorded_replays: 5, unavailable_operations: 4, repair_rounds: 1 });
+    expect(r.usage).toMatchObject({ qloo_dispatches: 0, adapter_calls: 8, recorded_replays: ranked ? 6 : 5, unavailable_operations: ranked ? 2 : 3, repair_rounds: 1 });
     const text = JSON.stringify(r);
     for (const id of await providerIdentifiers()) expect(text).not.toContain(id);
     expect(fetchSpy).not.toHaveBeenCalled();

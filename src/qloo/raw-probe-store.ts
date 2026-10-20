@@ -3,7 +3,7 @@ import { resolve, join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { EXECUTABLE_PROBES, probeDefinition, type ExecutableProbe, type RawProbeSummary } from "./probe-definitions";
-import { executeLiveRawProbe, type ProbeStore } from "./raw-probe-runner";
+import { executeLiveRawProbe, type ProbeBinding, type ProbeStore } from "./raw-probe-runner";
 import { inspectSavedP01 } from "./p01-reuse";
 import type { P01Checkpoint } from "./p01-profile";
 import type { P02Checkpoint } from "./p02-profile";
@@ -13,6 +13,8 @@ import { HISTORICAL_P03_ATTEMPT, P03R_PROFILE, type P03RCheckpoint } from "./p03
 import { P03_PROFILE, P03ProfileSchema, P03CheckpointSchema, P03SummarySchema } from "./p03-profile";
 import { type P05Checkpoint } from "./p05-profile";
 import { inspectAcceptedP05Signal, matchesP05Signal, type P05SignalBinding } from "./p05-signal";
+import { type P06Checkpoint } from "./p06-profile";
+import { inspectAcceptedP06Shortlist, matchesP06Shortlist, type P06ShortlistBinding } from "./p06-shortlist";
 import { loadLocalP01Config } from "./p01-local-env";
 
 async function checkedDirectory(projectRoot: string, probe: ExecutableProbe): Promise<string> {
@@ -60,7 +62,7 @@ async function ledger(attempts: string, probe: ExecutableProbe, ownedLock?: stri
   if (legacy) throw new Error("LEGACY_ATTEMPT_REVIEW_REQUIRED");
   const children = await readdir(attempts, { withFileTypes: true });
   if (children.length > 1000) throw new Error("LEDGER_REVIEW_REQUIRED");
-  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint; summary: RawProbeSummary | null }> = [];
+  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint; summary: RawProbeSummary | null }> = [];
   for (const child of children) {
     if (!child.isDirectory() || child.isSymbolicLink() || !def.checkpointSchema.shape.attempt_id.safeParse(child.name).success)
       throw new Error("LEDGER_REVIEW_REQUIRED");
@@ -73,6 +75,9 @@ async function ledger(attempts: string, probe: ExecutableProbe, ownedLock?: stri
         !def.profileSchema.safeParse(record.profile).success)) throw new Error("LEDGER_PROFILE_VERSION_MISMATCH");
     const checkpoint = def.checkpointSchema.parse(record.checkpoint);
     if (probe === "P05" && (record.record_revision !== "tastegate.probe-attempt.v4" ||
+        record.profile_revision !== def.profile.revision || record.max_response_bytes !== def.maxResponseBytes ||
+        !def.profileSchema.safeParse(record.profile).success)) throw new Error("LEDGER_PROFILE_VERSION_MISMATCH");
+    if (probe === "P06" && (record.record_revision !== "tastegate.probe-attempt.v5" ||
         record.profile_revision !== def.profile.revision || record.max_response_bytes !== def.maxResponseBytes ||
         !def.profileSchema.safeParse(record.profile).success)) throw new Error("LEDGER_PROFILE_VERSION_MISMATCH");
     if (checkpoint.attempt_id !== child.name) throw new Error("LEDGER_REVIEW_REQUIRED");
@@ -125,7 +130,7 @@ export async function inspectHistoricalP03ForRecovery(projectRoot: string) {
       history.last_attempt_id !== HISTORICAL_P03_ATTEMPT) throw new Error("HISTORICAL_P03_REVIEW_REQUIRED");
   return readHistoricalP03(await checkedDirectory(projectRoot, "P03"));
 }
-export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint, source: SourceRecord | null = null, p05Signal?: P05SignalBinding): ProbeStore {
+export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint, source: SourceRecord | null = null, binding?: ProbeBinding): ProbeStore {
   const def = probeDefinition(probe);
   const id = checkpoint.attempt_id; let reserved: string | null = null; let lockPath: string | null = null; let globalLock: string | null = null;
   async function releaseLock() {
@@ -146,8 +151,10 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
         const approved = checkpoint as P02Checkpoint;
         if (reused.rawSha256 !== approved.p01_raw_sha256) throw new Error("P01_REUSE_REVIEW_REQUIRED");
       }
-      if (probe === "P05" && (!matchesP05Signal(checkpoint, p05Signal) ||
+      if (probe === "P05" && (!matchesP05Signal(checkpoint, binding as P05SignalBinding | undefined) ||
           !matchesP05Signal(checkpoint, await inspectAcceptedP05Signal(projectRoot)))) throw new Error("P05_SIGNAL_IDENTITY_REVIEW_REQUIRED");
+      if (probe === "P06" && (!matchesP06Shortlist(checkpoint, binding as P06ShortlistBinding | undefined) ||
+          !matchesP06Shortlist(checkpoint, await inspectAcceptedP06Shortlist(projectRoot)))) throw new Error("P06_SHORTLIST_REVIEW_REQUIRED");
       const attempts = await checkedDirectory(projectRoot, probe); const base = resolve(attempts, "../..");
       const globalPath = join(base, "active.lock");
       await exclusiveWrite(globalPath, JSON.stringify({ attempt_id: id, probe }) + "\n"); globalLock = globalPath;
@@ -163,10 +170,10 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
           if (p01.reserved_attempts !== 1 || p01.recorded_dispatches !== 1 || p01.unresolved_attempts !== 0)
             throw new Error("P01_REUSE_REVIEW_REQUIRED");
         }
-        if (probe === "P03" || probe === "P04" || probe === "P03R" || probe === "P05") {
-          const priorProbes = probe === "P05" ? ["P01", "P02", "P03", "P04", "P03R"] as const : probe === "P03R" ? ["P01", "P02", "P03", "P04"] as const :
-            probe === "P03" ? ["P01", "P02", "P04"] as const : ["P01", "P02"] as const;
-          const reviewed: Readonly<Partial<Record<ExecutableProbe, number>>> = (checkpoint as P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint).prior_probe_dispatches_reviewed;
+        if (probe === "P03" || probe === "P04" || probe === "P03R" || probe === "P05" || probe === "P06") {
+          const priorProbes = probe === "P06" ? ["P01", "P02", "P03", "P04", "P03R", "P05"] as const : probe === "P05" ? ["P01", "P02", "P03", "P04", "P03R"] as const :
+            probe === "P03R" ? ["P01", "P02", "P03", "P04"] as const : probe === "P03" ? ["P01", "P02", "P04"] as const : ["P01", "P02"] as const;
+          const reviewed: Readonly<Partial<Record<ExecutableProbe, number>>> = (checkpoint as P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint).prior_probe_dispatches_reviewed;
           for (const prior of priorProbes) {
             const previous = await ledger(await checkedDirectory(projectRoot, prior), prior);
             if (previous.reserved_attempts !== reviewed[prior] || previous.recorded_dispatches !== reviewed[prior] ||
@@ -175,6 +182,7 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
           }
         }
         if (probe === "P05" && !matchesP05Signal(checkpoint, await inspectAcceptedP05Signal(projectRoot))) throw new Error("P05_SIGNAL_IDENTITY_REVIEW_REQUIRED");
+        if (probe === "P06" && !matchesP06Shortlist(checkpoint, await inspectAcceptedP06Shortlist(projectRoot))) throw new Error("P06_SHORTLIST_REVIEW_REQUIRED");
         if (probe === "P03R") await readHistoricalP03(await checkedDirectory(projectRoot, "P03"));
         const previous = await ledger(attempts, probe, id);
         if (previous.unresolved_attempts || previous.reserved_attempts !== checkpoint.prior_reserved_attempts ||
@@ -182,6 +190,8 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
         const folder = join(attempts, id); await mkdir(folder, { mode: 0o700 }); created = true;
         await exclusiveWrite(join(folder, "attempt.json"), JSON.stringify({
           ...(probe === "P05" ? { record_revision: "tastegate.probe-attempt.v4", profile_revision: def.profile.revision,
+            max_response_bytes: def.maxResponseBytes } : {}),
+          ...(probe === "P06" ? { record_revision: "tastegate.probe-attempt.v5", profile_revision: def.profile.revision,
             max_response_bytes: def.maxResponseBytes } : {}),
           ...(probe === "P03R" ? { record_revision: "tastegate.probe-attempt.v3", profile_revision: P03R_PROFILE.revision,
             max_response_bytes: def.maxResponseBytes } : {}), profile: def.profile, checkpoint, source,
@@ -227,9 +237,13 @@ export async function liveProbeFromPrivateCheckpoint(projectRoot: string, probe:
       if (reused.rawSha256 !== (approved as P02Checkpoint).p01_raw_sha256) return def.blocked("EVIDENCE_UNAVAILABLE");
     } catch { return def.blocked("EVIDENCE_UNAVAILABLE"); }
   }
-  let p05Signal: P05SignalBinding | undefined;
+  let binding: ProbeBinding | undefined;
   if (probe === "P05") {
-    try { p05Signal = await inspectAcceptedP05Signal(projectRoot); if (!matchesP05Signal(approved, p05Signal)) throw new Error(); }
+    try { const p05 = await inspectAcceptedP05Signal(projectRoot); if (!matchesP05Signal(approved, p05)) throw new Error(); binding = p05; }
+    catch { return def.blocked("EVIDENCE_UNAVAILABLE"); }
+  }
+  if (probe === "P06") {
+    try { const p06 = await inspectAcceptedP06Shortlist(projectRoot); if (!matchesP06Shortlist(approved, p06)) throw new Error(); binding = p06; }
     catch { return def.blocked("EVIDENCE_UNAVAILABLE"); }
   }
   let local: Awaited<ReturnType<typeof loadLocalP01Config>>;
@@ -246,11 +260,12 @@ export async function liveProbeFromPrivateCheckpoint(projectRoot: string, probe:
       "src/qloo/p02-profile.ts", "src/qloo/p02-private-store.ts", "src/qloo/p01-reuse.ts", "src/qloo/search-observation.ts",
       "src/qloo/p03-profile.ts", "src/qloo/p03-private-store.ts", "scripts/qloo-probe-p03.mjs",
       ...(probe === "P05" ? ["src/qloo/p05-profile.ts", "src/qloo/p05-signal.ts", "scripts/qloo-probe-p05.mjs"] : []),
+      ...(probe === "P06" ? ["src/qloo/p05-profile.ts", "src/qloo/p05-signal.ts", "src/qloo/p06-profile.ts", "src/qloo/p06-shortlist.ts", "scripts/qloo-probe-p06.mjs"] : []),
       "src/qloo/p03r-profile.ts", "src/qloo/p03r-private-store.ts", "src/qloo/probe-cli-contract.ts", "scripts/qloo-probe-p03r.mjs",
       "src/qloo/p04-profile.ts", "src/qloo/p04-private-store.ts",
       "scripts/probe-cli.mjs", "scripts/qloo-probe.mjs", "scripts/qloo-probe-p02.mjs", "scripts/qloo-probe-p04.mjs", "package.json", "package-lock.json"])
       files.push({ path, sha256: createHash("sha256").update(await readFile(resolve(projectRoot, path))).digest("hex") });
     source = { revision, files };
   } catch { return def.blocked("EVIDENCE_UNAVAILABLE"); }
-  return executeLiveRawProbe(probe, { checkpoint: approved, signal }, createPrivateProbeStore(projectRoot, probe, approved, source, p05Signal), local.config, p05Signal);
+  return executeLiveRawProbe(probe, { checkpoint: approved, signal }, createPrivateProbeStore(projectRoot, probe, approved, source, binding), local.config, binding);
 }

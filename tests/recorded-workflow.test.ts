@@ -45,7 +45,7 @@ describe("recorded provider workflow", () => {
     expect(repair.revalidation.findings.filter((f) => f.category === "hard_constraint").map((f) => [f.code, f.state])).toEqual([
       ["CITY_MISMATCH", "fail"], ["COUNTRY_MISMATCH", "fail"], ["FACT_UNCONFIRMED", "unknown"], ["MAX_ITEMS_MATCH", "pass"]]);
     expect(r).toMatchObject({ before_status: "UNKNOWN", final_status: "UNKNOWN", completion: "partial", final_candidate_ids: [] });
-    expect(r.usage).toMatchObject({ adapter_calls: 9, recorded_replays: 5, unavailable_operations: 4, repair_rounds: 1 });
+    expect(r.usage).toMatchObject({ adapter_calls: 8, recorded_replays: 5, unavailable_operations: 3, repair_rounds: 1 });
     const discovery = r.evidence.find((e) => e.snapshot.kind === "discover_places")!.snapshot;
     expect(discovery).toMatchObject({ preference_entity_ids: [ref(AUTHORED.artist)], preference_tag_ids: [], exclude_entity_ids: [ref(AUTHORED.venue)] });
     const text = JSON.stringify(r);

@@ -41,14 +41,16 @@ export const AuditInputSchema = z.strictObject({
 });
 export type AuditInput = z.infer<typeof AuditInputSchema>;
 
-// A user's explicit identity decision for one preference or recommendation. Untrusted input: it can only
-// choose among candidates the provider actually returned in the same run, never introduce an ID.
+// A user's explicit decision. Untrusted input: it can only choose among candidates the provider actually returned
+// in the same run, never introduce an ID. Targets are preference IDs, recommendation IDs (identity of an original),
+// or `repair:<recommendation id>` (identity of the proposed replacement for that slot).
+export const REPAIR_TARGET_PREFIX = "repair:";
 export const ConfirmationSchema = z.discriminatedUnion("decision", [
   z.strictObject({ target_id: id, decision: z.literal("select"), ref: qlooRef }),
   z.strictObject({ target_id: id, decision: z.literal("skip") }),
 ]);
 export type Confirmation = z.infer<typeof ConfirmationSchema>;
-export const ConfirmationsSchema = z.array(ConfirmationSchema).max(8)
+export const ConfirmationsSchema = z.array(ConfirmationSchema).max(11)
   .refine((v) => new Set(v.map((c) => c.target_id)).size === v.length, "One decision per target");
 // Trusted host policy for Insights requests; never selected by the browser or a model.
 export const InsightsPolicySchema = z.strictObject({
@@ -86,23 +88,37 @@ const UnavailableRequestSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("rank_places"), ...signals, candidate_entity_ids: z.array(entityRef).max(6) }),
   z.strictObject({ operation: z.literal("discover_places"), ...signals, exclude_entity_ids: z.array(entityRef).max(6), ...DiscoveryOptions }),
 ]);
+// Why TasteGate holds no usable provider evidence for an exact request. Never negative evidence about a venue.
+export const UnavailableReasonSchema = z.enum([
+  "NOT_CAPTURED",          // no approved recording or live authorization covers this exact request
+  "APPROVAL_REQUIRED",     // the request is prepared but its one-time approval has not been given/used
+  "REVIEW_REQUIRED",       // executed and captured, but the response has not been reviewed and sealed for replay
+  "UNEXPECTED_ENTITY",     // the provider returned entities outside the requested shortlist: contract not honored
+  "INCOMPATIBLE_SCORES",   // returned scores cannot support an ordering (missing or inconsistent with the order)
+  "RESPONSE_UNUSABLE",     // the provider response failed, was empty-by-error, oversized or had an unsupported shape
+]);
+export type UnavailableReason = z.infer<typeof UnavailableReasonSchema>;
+const ScoresSchema = z.array(z.strictObject({ entity_id: entityRef, query_affinity: z.number().finite().nullable() })).max(6);
 export const SnapshotSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("input"), input: AuditInputSchema, confirmations: ConfirmationsSchema.optional() }),
   z.strictObject({ kind: z.literal("entity_lookup"), ...LookupRequestSchema, matches: z.array(EntitySchema).max(5) }),
   z.strictObject({ kind: z.literal("tag_lookup"), query: text(200), matches: z.array(TagSchema).max(5) }),
+  // A relative ordering of the requested shortlist within ONE query. `scores` are Qloo's query-relative affinities,
+  // shown for transparency only: not comparable across queries and never a probability of liking.
+  // `shortlist_class` is present for provider evidence: ALL_RETURNED or PARTIAL (omission is not negative evidence).
   z.strictObject({ kind: z.literal("rank_places"), ...signals,
     candidate_entity_ids: z.array(entityRef).max(6),
     ordered_entity_ids: z.array(entityRef).max(6),
-    explainability: z.enum(["missing", "available"]) }),
+    explainability: z.enum(["missing", "available"]),
+    scores: ScoresSchema.optional(), shortlist_class: z.enum(["ALL_RETURNED", "PARTIAL"]).optional() }),
   z.strictObject({ kind: z.literal("discover_places"), ...signals,
     exclude_entity_ids: z.array(entityRef).max(6), ...DiscoveryOptions,
     client_excluded_ids: z.array(entityRef).max(6).optional(),
-    // Provider query.affinity, kept for transparency only: query-relative, not comparable across queries.
-    scores: z.array(z.strictObject({ entity_id: entityRef, query_affinity: z.number().finite().nullable() })).max(5).optional(),
+    scores: ScoresSchema.optional(),
     candidates: z.array(EntitySchema).max(5) }),
-  // TasteGate's record that no provider evidence exists for this exact request. Never negative evidence.
+  // TasteGate's record that no provider evidence exists for this exact request.
   z.strictObject({ kind: z.literal("unavailable"), request: UnavailableRequestSchema,
-    reason: z.enum(["NOT_CAPTURED", "APPROVAL_REQUIRED"]), detail: text(300) }),
+    reason: UnavailableReasonSchema, detail: text(300) }),
 ]);
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export function digest(value: unknown): string {
@@ -123,7 +139,7 @@ export function snapshotRefs(s: Snapshot): string[] {
       r.operation === "discover_places" ? [...signalIds(r), ...r.exclude_entity_ids] : [];
   }
   if (s.kind === "entity_lookup" || s.kind === "tag_lookup") return s.matches.map((m) => m.id);
-  if (s.kind === "rank_places") return [...signalIds(s), ...s.candidate_entity_ids, ...s.ordered_entity_ids];
+  if (s.kind === "rank_places") return [...signalIds(s), ...s.candidate_entity_ids, ...s.ordered_entity_ids, ...(s.scores ?? []).map((x) => x.entity_id)];
   return [...signalIds(s), ...s.exclude_entity_ids, ...(s.client_excluded_ids ?? []), ...(s.scores ?? []).map((x) => x.entity_id), ...s.candidates.map((c) => c.id)];
 }
 export function snapshotOperation(s: Snapshot): "input" | "entity_lookup" | "tag_lookup" | "insights" {
@@ -148,20 +164,27 @@ export const EvidenceSchema = z.strictObject({
     ctx.addIssue({ code: "custom", message: "Provider-only snapshot in fixture evidence" });
 });
 export type Evidence = z.infer<typeof EvidenceSchema>;
-// Metadata of an immutable, owner-approved recorded Qloo response, verified against private manifests.
+// Metadata of ONE provider response. RECORDED_LIVE: an immutable, owner-approved capture verified against private
+// manifests (P01-P06). AUTHORIZED_LIVE: a fresh request made under an owner-created grant, tied to a private ledger
+// record. The two are never interchangeable and a report may contain only one of them.
 export const CaptureSchema = z.strictObject({
-  probe: z.enum(["P01", "P02", "P03R", "P04", "P05"]), attempt_id: z.uuid(),
+  probe: z.enum(["P01", "P02", "P03R", "P04", "P05", "P06", "LIVE"]), attempt_id: z.uuid(),
   endpoint: z.enum(["/search", "/v2/tags", "/v2/insights"]), profile_revision: text(120),
   recorded_at: z.iso.datetime(), http_status: z.literal(200),
   response_bytes: z.number().int().min(1).max(262_144),
   // Exact request parameters; any provider ID is replaced by its pseudonymous reference.
   request_params: z.record(z.string().min(1).max(64), text(200)),
-  integrity: z.literal("SHA256_MATCHES_PRIVATE_MANIFEST"),
+  integrity: z.enum(["SHA256_MATCHES_PRIVATE_MANIFEST", "LIVE_LEDGER_RECORD"]),
+}).superRefine((c, ctx) => {
+  if ((c.probe === "LIVE") !== (c.integrity === "LIVE_LEDGER_RECORD")) ctx.addIssue({ code: "custom", message: "Capture integrity contradicts its origin" });
 });
 export type Capture = z.infer<typeof CaptureSchema>;
 const ENDPOINT_BY_OPERATION = { entity_lookup: "/search", tag_lookup: "/v2/tags", insights: "/v2/insights" } as const;
+export const PROVIDER_MODES = ["recorded_live", "authorized_live"] as const;
+export const ProviderModeSchema = z.enum(PROVIDER_MODES);
+export type ProviderMode = z.infer<typeof ProviderModeSchema>;
 export const ProviderEvidenceSchema = z.strictObject({
-  evidence_id: id, run_id: z.uuid(), source_mode: z.literal("recorded_live"),
+  evidence_id: id, run_id: z.uuid(), source_mode: ProviderModeSchema,
   provider: z.enum(["user", "qloo", "tastegate"]), dataset_id: id,
   operation: z.enum(["input", "entity_lookup", "tag_lookup", "insights"]),
   call_id: id.nullable(), capture: CaptureSchema.nullable(), upstream_request_id: z.null(),
@@ -177,10 +200,11 @@ export const ProviderEvidenceSchema = z.strictObject({
   const expectedProvider = e.snapshot.kind === "input" ? "user" : e.snapshot.kind === "unavailable" ? "tastegate" : "qloo";
   if (e.provider !== expectedProvider) reject("Evidence provider contradicts its snapshot");
   if (expectedProvider === "qloo") {
-    // Every provider fact must come from a verified recording of the matching endpoint.
+    // Every provider fact must come from a verified recording (replayed) or a ledgered fresh request of the matching endpoint.
+    const recorded = e.source_mode === "recorded_live";
     if (!e.capture || e.operation === "input" || e.capture.endpoint !== ENDPOINT_BY_OPERATION[e.operation] ||
-        !e.cache_hit || e.fetched_at !== e.capture.recorded_at) reject("Provider evidence lacks a matching recording");
-  } else if (e.capture || e.cache_hit || e.fetched_at !== null) reject("Non-provider evidence claims a recording");
+        e.cache_hit !== recorded || (e.capture.probe === "LIVE") === recorded || e.fetched_at !== e.capture.recorded_at) reject("Provider evidence lacks a matching origin record");
+  } else if (e.capture || e.cache_hit || e.fetched_at !== null) reject("Non-provider evidence claims a provider origin");
 });
 export type ProviderEvidence = z.infer<typeof ProviderEvidenceSchema>;
 export const FindingCodeSchema = z.enum([
@@ -189,7 +213,7 @@ export const FindingCodeSchema = z.enum([
   "TASTE_EVIDENCE_PRESENT", "TASTE_EVIDENCE_MISSING", "CLAIM_UNVERIFIED", "EXPLAINABILITY_MISSING",
   "PREFERENCE_UNRESOLVED", "PROVENANCE_REJECTED", "CALL_BUDGET_EXHAUSTED", "TIMEOUT", "CANCELLED",
   "REVALIDATION_ID_MISMATCH", "LOOKUP_FAILED",
-  "CONFIRMATION_REQUIRED", "EVIDENCE_UNAVAILABLE", "FACT_UNCONFIRMED",
+  "CONFIRMATION_REQUIRED", "EVIDENCE_UNAVAILABLE", "FACT_UNCONFIRMED", "IDENTITY_USER_CONFIRMED",
 ]);
 export const FindingSchema = z.strictObject({
   code: FindingCodeSchema,
@@ -213,15 +237,38 @@ export const CandidateAuditSchema = z.strictObject({
     ctx.addIssue({ code: "custom", message: "Unsupported PASS verdict" });
 });
 export type CandidateAudit = z.infer<typeof CandidateAuditSchema>;
+// How a replacement's identity was established. `independent_lookup`: a separate search returned the same provider
+// identity. `user_confirmation`: the user confirmed the provider's candidate details (no independent lookup existed).
+export const IdentityBasisSchema = z.enum(["independent_lookup", "user_confirmation"]);
+export type IdentityBasis = z.infer<typeof IdentityBasisSchema>;
 export const RepairSchema = z.strictObject({
   replaces: id, replacement_candidate_id: id, proposed_entity_id: entityRef, discovery_evidence_refs: ids,
-  revalidation: CandidateAuditSchema, accepted: z.boolean(),
+  // The separate lookup attempted for this proposal (a search result or an explicit "unavailable" record).
+  lookup_evidence_ref: id,
+  revalidation: CandidateAuditSchema, accepted: z.boolean(), identity_basis: IdentityBasisSchema.nullable(),
 }).superRefine((r, ctx) => {
   if (r.replacement_candidate_id !== r.revalidation.candidate_id ||
       (r.accepted && (r.revalidation.verdict !== "PASS" || r.revalidation.entity_id !== r.proposed_entity_id)))
     ctx.addIssue({ code: "custom", message: "Replacement has not passed revalidation" });
+  if ((r.revalidation.resolution === "resolved") !== (r.identity_basis !== null))
+    ctx.addIssue({ code: "custom", message: "Identity basis contradicts the revalidation" });
 });
 export type Repair = z.infer<typeof RepairSchema>;
+// Per repair target slot. A repair target is an original that is BLOCKED or has no identity; missing taste evidence
+// alone never makes a slot a target. `REPAIR_VERIFIED` only for a replacement that passed every revalidation gate.
+export const RepairStatusSchema = z.enum(["REPAIR_VERIFIED", "REPAIR_REJECTED", "REPAIR_UNAVAILABLE", "EVIDENCE_INSUFFICIENT", "UNKNOWN"]);
+export type RepairStatus = z.infer<typeof RepairStatusSchema>;
+export const RepairReasonSchema = z.enum([
+  "REPLACEMENT_VERIFIED", "REPLACEMENT_FAILED_HARD_CHECK", "REPLACEMENT_DECLINED_BY_USER",
+  "REPLACEMENT_AWAITING_IDENTITY_CONFIRMATION", "REPLACEMENT_EVIDENCE_MISSING",
+  "NO_DISCOVERY_EVIDENCE", "DISCOVERY_EMPTY", "NO_CONFIRMED_SIGNAL", "COUNT_CONSTRAINT_NOT_REPAIRABLE", "REPAIR_DISABLED",
+  "CALL_BUDGET_EXHAUSTED", "WORKFLOW_STOPPED",
+]);
+export type RepairReason = z.infer<typeof RepairReasonSchema>;
+export const RepairOutcomeSchema = z.strictObject({
+  replaces: id, status: RepairStatusSchema, reason: RepairReasonSchema, replacement_candidate_id: id.nullable(),
+});
+export type RepairOutcome = z.infer<typeof RepairOutcomeSchema>;
 export const StateSchema = z.enum(["Validate", "Resolve", "Retrieve", "Audit", "Repair", "Revalidate", "NeedsInput", "Report"]);
 export type State = z.infer<typeof StateSchema>;
 export const StopReasonSchema = z.enum(["COMPLETE", "NEEDS_INPUT", "CALL_BUDGET_EXHAUSTED", "PROVENANCE_REJECTED", "TIMEOUT", "CANCELLED", "ADAPTER_ERROR"]);
@@ -237,13 +284,14 @@ const reportCommon = {
   run_id: z.uuid(), input: AuditInputSchema, input_ref: z.literal("/input"),
   before_status: VerdictSchema, final_status: VerdictSchema, completion: z.enum(["complete", "partial"]),
   original_audits: z.array(CandidateAuditSchema).min(1).max(3), repairs: z.array(RepairSchema).max(3),
+  repair_outcomes: z.array(RepairOutcomeSchema).max(3),
   final_candidate_ids: ids, preference_evidence_refs: ids, unresolved_preferences: ids,
   limitations: z.array(text(500)).min(1).max(20), stop_reason: StopReasonSchema,
   trace: z.array(z.strictObject({ state: StateSchema, call_id: id.nullable() })).max(64),
   archive: z.strictObject({ status: z.literal("not_requested"), action_id: z.null(), receipt_ref: z.null() }),
 };
 export const ReportShapeSchema = z.strictObject({
-  schema_revision: z.literal("tastegate.report.v1a"), source_mode: z.literal("fixture"), ...reportCommon,
+  schema_revision: z.literal("tastegate.report.v1b"), source_mode: z.literal("fixture"), ...reportCommon,
   evidence: z.array(EvidenceSchema).min(1).max(15),
   usage: z.strictObject({ qloo_dispatches: z.literal(0), llm_dispatches: z.literal(0),
     fixture_calls: z.number().int().min(0).max(14), repair_rounds: z.number().int().min(0).max(1), elapsed_ms: z.number().finite().nonnegative() }),
@@ -254,17 +302,21 @@ export const PreferenceResolutionSchema = z.strictObject({
   status: z.enum(["resolved", "pending", "skipped", "unresolved", "not_attempted"]), selected_id: qlooRef.nullable(),
 });
 export type PreferenceResolution = z.infer<typeof PreferenceResolutionSchema>;
+// `replacement` confirmations are non-blocking: the audit is complete without them, and the status says so.
 export const PendingConfirmationSchema = z.strictObject({
-  target_id: id, target_kind: z.enum(["preference", "recommendation"]), lookup_ref: id,
+  target_id: id, target_kind: z.enum(["preference", "recommendation", "replacement"]), lookup_ref: id,
   candidate_ids: z.array(qlooRef).min(1).max(5),
 });
+export type PendingConfirmation = z.infer<typeof PendingConfirmationSchema>;
 export const ProviderReportShapeSchema = z.strictObject({
-  schema_revision: z.literal("tastegate.report.v2a"), source_mode: z.literal("recorded_live"), scenario_id: id,
+  schema_revision: z.literal("tastegate.report.v2b"), source_mode: ProviderModeSchema, scenario_id: id,
   ...reportCommon, insights_policy: InsightsPolicySchema, confirmations: ConfirmationsSchema,
   preference_resolution: z.array(PreferenceResolutionSchema).min(1).max(3),
-  pending_confirmations: z.array(PendingConfirmationSchema).max(6),
+  pending_confirmations: z.array(PendingConfirmationSchema).max(9),
   evidence: z.array(ProviderEvidenceSchema).min(1).max(15),
-  usage: z.strictObject({ qloo_dispatches: z.literal(0), llm_dispatches: z.literal(0),
+  // Recorded reports replay captures (qloo_dispatches 0, recorded_replays = replayed responses). Authorized-live
+  // reports dispatch fresh requests (qloo_dispatches = fresh responses, recorded_replays 0). Never both.
+  usage: z.strictObject({ qloo_dispatches: z.number().int().min(0).max(14), llm_dispatches: z.literal(0),
     adapter_calls: z.number().int().min(0).max(14), recorded_replays: z.number().int().min(0).max(14),
     unavailable_operations: z.number().int().min(0).max(14),
     repair_rounds: z.number().int().min(0).max(1), elapsed_ms: z.number().finite().nonnegative() }),

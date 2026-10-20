@@ -1,0 +1,320 @@
+{
+  "schema": "tastegate.evaluation-results.v1",
+  "generated_at_utc": "2026-10-20T08:52:48.083Z",
+  "base_commit": "6b446784d01def511fe4ce1d53fe4ca4dd39b27e",
+  "working_tree_dirty": true,
+  "holdout_seed": 20261020,
+  "caveat": "Development cases shaped the gate and are not a benchmark. The seeded holdout is synthetic: it shows constructed failure patterns are handled, not that real recommendations behave this way. No live Qloo request was made. Latency is local in-process time only.",
+  "recorded_evidence_present": true,
+  "strata": {
+    "SYNTHETIC": {
+      "status": "RUN",
+      "note": "Authored development cases. They shaped the gate, so they show it handles known patterns, not that it generalizes.",
+      "cases": 14,
+      "cases_passed": 14,
+      "failed_case_ids": [],
+      "comparison": {
+        "status": "RUN",
+        "plans": 11,
+        "scored_plans": 10,
+        "paused_for_human_decision": 1,
+        "paused_plans": {
+          "plans": 1,
+          "gate_decisions_requested": 1,
+          "baseline_identity_errors": {
+            "AS_PROPOSED": 0,
+            "TOP_HIT_UNCHECKED": 0
+          },
+          "baseline_unverifiable_shipped": {
+            "AS_PROPOSED": 1,
+            "TOP_HIT_UNCHECKED": 0
+          },
+          "baseline_violating_shipped": {
+            "AS_PROPOSED": 0,
+            "TOP_HIT_UNCHECKED": 0
+          }
+        },
+        "policies": {
+          "AS_PROPOSED": {
+            "shipped": 14,
+            "shipped_valid": 4,
+            "shipped_violating": 6,
+            "shipped_unverifiable": 4,
+            "proposal_valid": 4,
+            "valid_kept": 4,
+            "proposal_violating": 6,
+            "violating_removed": 0,
+            "identity_errors": 0,
+            "requests": 0,
+            "human_decisions": 0,
+            "plans": 10,
+            "plans_over_limit": 1,
+            "latency_ms": {
+              "samples": 0,
+              "p50": null,
+              "p95": null,
+              "max": null
+            },
+            "violating_removed_rate": 0,
+            "valid_kept_rate": 1
+          },
+          "TOP_HIT_UNCHECKED": {
+            "shipped": 13,
+            "shipped_valid": 6,
+            "shipped_violating": 6,
+            "shipped_unverifiable": 1,
+            "proposal_valid": 4,
+            "valid_kept": 4,
+            "proposal_violating": 6,
+            "violating_removed": 0,
+            "identity_errors": 0,
+            "requests": 20,
+            "human_decisions": 0,
+            "plans": 10,
+            "plans_over_limit": 1,
+            "latency_ms": {
+              "samples": 10,
+              "p50": 0.06,
+              "p95": 0.51,
+              "max": 0.51
+            },
+            "violating_removed_rate": 0,
+            "valid_kept_rate": 1
+          },
+          "TASTEGATE": {
+            "shipped": 5,
+            "shipped_valid": 5,
+            "shipped_violating": 0,
+            "shipped_unverifiable": 0,
+            "proposal_valid": 4,
+            "valid_kept": 3,
+            "proposal_violating": 6,
+            "violating_removed": 6,
+            "identity_errors": 0,
+            "requests": 63,
+            "human_decisions": 0,
+            "plans": 10,
+            "plans_over_limit": 0,
+            "latency_ms": {
+              "samples": 10,
+              "p50": 1.34,
+              "p95": 16.85,
+              "max": 16.85
+            },
+            "violating_removed_rate": 1,
+            "valid_kept_rate": 0.75
+          }
+        },
+        "paired_signs": {
+          "vs_AS_PROPOSED": {
+            "shipped_violating": {
+              "better": 6,
+              "same": 4,
+              "worse": 0
+            },
+            "shipped_unverifiable": {
+              "better": 4,
+              "same": 6,
+              "worse": 0
+            },
+            "identity_errors": {
+              "better": 0,
+              "same": 10,
+              "worse": 0
+            }
+          },
+          "vs_TOP_HIT_UNCHECKED": {
+            "shipped_violating": {
+              "better": 6,
+              "same": 4,
+              "worse": 0
+            },
+            "shipped_unverifiable": {
+              "better": 1,
+              "same": 9,
+              "worse": 0
+            },
+            "identity_errors": {
+              "better": 0,
+              "same": 10,
+              "worse": 0
+            }
+          }
+        },
+        "gate": {
+          "final_status_counts": {
+            "UNKNOWN": 4,
+            "PASS": 2,
+            "BLOCKED": 4
+          },
+          "final_items": 5,
+          "final_items_with_taste_evidence": 4,
+          "taste_evidence_coverage": 0.8
+        }
+      }
+    },
+    "SYNTHETIC_HOLDOUT": {
+      "status": "RUN",
+      "note": "Seeded synthetic plans judged by an oracle that does not use the audit rules. Constructed failure patterns only; not Qloo data and not a statement about cultural relevance.",
+      "cases": 60,
+      "cases_passed": 60,
+      "failed_case_ids": [],
+      "comparison": {
+        "status": "RUN",
+        "plans": 60,
+        "scored_plans": 50,
+        "paused_for_human_decision": 10,
+        "paused_plans": {
+          "plans": 10,
+          "gate_decisions_requested": 10,
+          "baseline_identity_errors": {
+            "AS_PROPOSED": 0,
+            "TOP_HIT_UNCHECKED": 7
+          },
+          "baseline_unverifiable_shipped": {
+            "AS_PROPOSED": 3,
+            "TOP_HIT_UNCHECKED": 2
+          },
+          "baseline_violating_shipped": {
+            "AS_PROPOSED": 2,
+            "TOP_HIT_UNCHECKED": 9
+          }
+        },
+        "policies": {
+          "AS_PROPOSED": {
+            "shipped": 104,
+            "shipped_valid": 55,
+            "shipped_violating": 26,
+            "shipped_unverifiable": 23,
+            "proposal_valid": 55,
+            "valid_kept": 55,
+            "proposal_violating": 26,
+            "violating_removed": 0,
+            "identity_errors": 0,
+            "requests": 0,
+            "human_decisions": 0,
+            "plans": 50,
+            "plans_over_limit": 2,
+            "latency_ms": {
+              "samples": 0,
+              "p50": null,
+              "p95": null,
+              "max": null
+            },
+            "violating_removed_rate": 0,
+            "valid_kept_rate": 1
+          },
+          "TOP_HIT_UNCHECKED": {
+            "shipped": 99,
+            "shipped_valid": 62,
+            "shipped_violating": 31,
+            "shipped_unverifiable": 6,
+            "proposal_valid": 55,
+            "valid_kept": 55,
+            "proposal_violating": 26,
+            "violating_removed": 0,
+            "identity_errors": 0,
+            "requests": 132,
+            "human_decisions": 0,
+            "plans": 50,
+            "plans_over_limit": 2,
+            "latency_ms": {
+              "samples": 50,
+              "p50": 0.06,
+              "p95": 0.16,
+              "max": 0.55
+            },
+            "violating_removed_rate": 0,
+            "valid_kept_rate": 1
+          },
+          "TASTEGATE": {
+            "shipped": 68,
+            "shipped_valid": 68,
+            "shipped_violating": 0,
+            "shipped_unverifiable": 0,
+            "proposal_valid": 55,
+            "valid_kept": 52,
+            "proposal_violating": 26,
+            "violating_removed": 26,
+            "identity_errors": 0,
+            "requests": 259,
+            "human_decisions": 0,
+            "plans": 50,
+            "plans_over_limit": 0,
+            "latency_ms": {
+              "samples": 50,
+              "p50": 0.75,
+              "p95": 1.96,
+              "max": 2.17
+            },
+            "violating_removed_rate": 1,
+            "valid_kept_rate": 0.945
+          }
+        },
+        "paired_signs": {
+          "vs_AS_PROPOSED": {
+            "shipped_violating": {
+              "better": 22,
+              "same": 28,
+              "worse": 0
+            },
+            "shipped_unverifiable": {
+              "better": 18,
+              "same": 32,
+              "worse": 0
+            },
+            "identity_errors": {
+              "better": 0,
+              "same": 50,
+              "worse": 0
+            }
+          },
+          "vs_TOP_HIT_UNCHECKED": {
+            "shipped_violating": {
+              "better": 25,
+              "same": 25,
+              "worse": 0
+            },
+            "shipped_unverifiable": {
+              "better": 6,
+              "same": 44,
+              "worse": 0
+            },
+            "identity_errors": {
+              "better": 0,
+              "same": 50,
+              "worse": 0
+            }
+          }
+        },
+        "gate": {
+          "final_status_counts": {
+            "BLOCKED": 13,
+            "PASS": 14,
+            "UNKNOWN": 16,
+            "REVIEW": 7
+          },
+          "final_items": 68,
+          "final_items_with_taste_evidence": 61,
+          "taste_evidence_coverage": 0.897
+        }
+      }
+    },
+    "RECORDED_LIVE": {
+      "status": "WITHHELD",
+      "note": "Computed locally from owner-approved recordings. The aggregates are withheld from this public page unless the owner chooses to publish them.",
+      "cases": 4,
+      "cases_passed": 4,
+      "failed_case_ids": 0,
+      "comparison": null
+    },
+    "AUTHORIZED_LIVE": {
+      "status": "NOT RUN",
+      "note": "Not run. No real live Qloo request has been authorized for evaluation, so no live result is claimed.",
+      "cases": 0,
+      "cases_passed": 0,
+      "failed_case_ids": [],
+      "comparison": null
+    }
+  }
+}

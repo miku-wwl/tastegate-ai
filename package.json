@@ -21,7 +21,11 @@
     "probe:p03": "node scripts/qloo-probe-p03.mjs",
     "probe:p03r": "node scripts/qloo-probe-p03r.mjs",
     "probe:p04": "node scripts/qloo-probe-p04.mjs",
-    "probe:p05": "node scripts/qloo-probe-p05.mjs"
+    "probe:p05": "node scripts/qloo-probe-p05.mjs",
+    "probe:p06": "node scripts/qloo-probe-p06.mjs",
+    "live:grant": "node scripts/live-grant.mjs",
+    "safety:deploy": "node scripts/deploy-safety.mjs",
+    "safety:deploy:selftest": "node scripts/deploy-safety.mjs --self-test"
   },
   "dependencies": {
     "next": "16.4.2",

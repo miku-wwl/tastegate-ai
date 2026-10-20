@@ -28,8 +28,21 @@ export interface RecordedQlooAdapter {
   discoverPlaces(request: DiscoveryRequest, context: CallContext): Promise<RecordedObservation>;
 }
 
-// Future semantic adapter port. Phase 1B adds isolated offline transport checks and a
-// permanently disabled live implementation; no verified response mapper exists.
+// A fresh request made under an owner-created grant (see src/qloo/live-grant.ts and live-adapter-authorized.ts). It
+// returns the same normalized snapshots as the recorded adapter, but every provider observation is tied to a ledgered
+// live request and is never represented as a replay. Recorded and live observations are not interchangeable.
+export type LiveObservation = { source_mode: "authorized_live"; dataset_id: string; capture: Capture | null; snapshot: Snapshot };
+export interface AuthorizedLiveQlooAdapter {
+  readonly mode: "authorized_live";
+  readonly datasetId: string;
+  searchEntity(request: LookupRequest, context: CallContext): Promise<LiveObservation>;
+  searchTags(query: string, context: CallContext): Promise<LiveObservation>;
+  rankPlaces(request: RankRequest, context: CallContext): Promise<LiveObservation>;
+  discoverPlaces(request: DiscoveryRequest, context: CallContext): Promise<LiveObservation>;
+}
+export type ProviderQlooAdapter = RecordedQlooAdapter | AuthorizedLiveQlooAdapter;
+
+// Legacy port, permanently disabled (see live-adapter.ts): it returns `unknown` and can never run a workflow.
 // `unknown` deliberately avoids promising an unobserved live response shape.
 export interface LiveQlooAdapter {
   readonly mode: "live";
@@ -41,7 +54,7 @@ export interface LiveQlooAdapter {
 export class LiveExecutionBlockedError extends Error {
   constructor() { super("Live Qloo execution is blocked in Phase 1A; no live adapter is implemented."); }
 }
-export function requireFixture(adapter: FixtureQlooAdapter | LiveQlooAdapter | RecordedQlooAdapter): asserts adapter is FixtureQlooAdapter {
+export function requireFixture(adapter: FixtureQlooAdapter | LiveQlooAdapter | ProviderQlooAdapter): asserts adapter is FixtureQlooAdapter {
   if (adapter.mode !== "fixture") throw new LiveExecutionBlockedError();
 }
 export type FixtureWorld = {

@@ -178,7 +178,7 @@ it("preserves CLI JSON, separates preview/preflight from execution, and hides in
   const root = await temp(); await prior(root); execFileSync("git", ["init", "--quiet", root], { windowsHide: true });
   await writeFile(join(root, ".gitignore"), ".env*\nprivate/\n.cache/\n"); await writeFile(join(root, ".env.local"), "QLOO_MODE=live\nQLOO_API_KEY=" + key + "\n", { mode: 0o600 });
   for (const name of ["boundary-error", "server-config", "p01-profile", "p01-local-env", "p01-runner", "p01-private-store", "p02-profile", "p02-private-store",
-    "p03-profile", "p03-private-store", "p04-profile", "p04-private-store", "p03r-profile", "p03r-private-store", "p05-profile", "p05-signal", "probe-cli-contract", "probe-definitions", "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
+    "p03-profile", "p03-private-store", "p04-profile", "p04-private-store", "p03r-profile", "p03r-private-store", "p05-profile", "p05-signal", "p06-profile", "p06-shortlist", "probe-cli-contract", "probe-definitions", "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
     const target = join(root, "src/qloo", name + ".ts"); await mkdir(dirname(target), { recursive: true }); await copyFile(resolve("src/qloo", name + ".ts"), target);
   }
   await mkdir(join(root, "scripts")); for (const n of ["probe-cli.mjs", "qloo-probe-p03r.mjs"]) await copyFile(resolve("scripts", n), join(root, "scripts", n));

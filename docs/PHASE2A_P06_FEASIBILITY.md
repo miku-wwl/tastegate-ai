@@ -2,6 +2,8 @@
 
 2026-10-19, Pacific/Auckland. **Documentation and source review only. P06 is prepared, NOT approved and NOT executed (zero requests).** No execution code was added.
 
+> **Update 2026-10-20 (Phase 2B + 3A):** the owner approved P06 (P06 only), it was executed exactly once, reviewed locally (class A) and sealed. See [P06 gate and result](PHASE2B3A_EXECUTION_REPORT.md#p06-gate-and-result). This document is kept as the pre-execution record.
+
 ## Question
 
 Can Qloo Insights score and order an arbitrary caller-provided shortlist of Place IDs against confirmed taste signals? This is what TasteGate needs to give original recommendations real cultural evidence.

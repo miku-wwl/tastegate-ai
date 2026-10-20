@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 
 export async function runProbeCli(probe) {
-if (probe !== "P01" && probe !== "P02" && probe !== "P03" && probe !== "P04" && probe !== "P03R" && probe !== "P05") throw new Error("PROBE_NOT_EXECUTABLE");
+if (probe !== "P01" && probe !== "P02" && probe !== "P03" && probe !== "P04" && probe !== "P03R" && probe !== "P05" && probe !== "P06") throw new Error("PROBE_NOT_EXECUTABLE");
 const lower = probe.toLowerCase();
 const project = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -20,7 +20,7 @@ try {
   await writeFile(join(target, "package.json"), '{"type":"commonjs"}\n');
   for (const name of ["boundary-error", "server-config", "p01-profile", "p01-local-env", "p01-runner", "p01-private-store",
     "p02-profile", "p02-private-store", "p03-profile", "p03-private-store", "p04-profile", "p04-private-store",
-    "p05-profile", "p05-signal", "p03r-profile", "p03r-private-store", "probe-cli-contract",
+    "p05-profile", "p05-signal", "p06-profile", "p06-shortlist", "p03r-profile", "p03r-private-store", "probe-cli-contract",
     "probe-definitions", "raw-probe-runner", "raw-probe-store", "p01-reuse", "search-observation"]) {
     const source = await readFile(join(project, "src/qloo", `${name}.ts`), "utf8");
     const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } });
@@ -54,9 +54,9 @@ try {
         const saved = await inspectSavedP01(project);
         preflight.p01_reuse = { source_attempt: saved.sourceAttempt, integrity_verified: true, observation: saved.observation };
       }
-      if (probe === "P03" || probe === "P04" || probe === "P03R" || probe === "P05") {
+      if (probe === "P03" || probe === "P04" || probe === "P03R" || probe === "P05" || probe === "P06") {
         preflight.prior_probe_ledgers = {};
-        for (const prior of probe === "P05" ? ["P01", "P02", "P03", "P04", "P03R"] : probe === "P03R" ? ["P01", "P02", "P03", "P04"] : probe === "P03" ? ["P01", "P02", "P04"] : ["P01", "P02"]) {
+        for (const prior of probe === "P06" ? ["P01", "P02", "P03", "P04", "P03R", "P05"] : probe === "P05" ? ["P01", "P02", "P03", "P04", "P03R"] : probe === "P03R" ? ["P01", "P02", "P03", "P04"] : probe === "P03" ? ["P01", "P02", "P04"] : ["P01", "P02"]) {
           const ledger = await inspectPrivateProbeLedger(project, prior);
           if (ledger.reserved_attempts !== 1 || ledger.recorded_dispatches !== 1 || ledger.unresolved_attempts !== 0) throw new Error("PRIOR_ATTEMPTS_NOT_REVIEWED");
           preflight.prior_probe_ledgers[prior] = ledger;
@@ -65,6 +65,13 @@ try {
           const { inspectAcceptedP05Signal } = require(join(target, "p05-signal.js"));
           await inspectAcceptedP05Signal(project);
           preflight.signal_identity = "ACCEPTED_FOR_P05_ONLY";
+        }
+        if (probe === "P06") {
+          // Local verification only: re-derives both shortlist IDs from manifest-verified immutable captures.
+          const { inspectAcceptedP06Shortlist } = require(join(target, "p06-shortlist.js"));
+          await inspectAcceptedP06Shortlist(project);
+          preflight.signal_identity = "ACCEPTED_FOR_P05_ONLY_REVERIFIED";
+          preflight.shortlist_identity = "REVIEWED_FOR_P06_ONLY";
         }
         if (probe === "P03R") {
           const { inspectHistoricalP03ForRecovery } = require(join(target, "raw-probe-store.js"));

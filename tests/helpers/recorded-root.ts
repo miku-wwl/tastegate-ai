@@ -32,7 +32,27 @@ export function authoredBodies(overrides: Partial<Record<string, unknown>> = {})
     ...overrides,
   };
 }
-export type SeedOptions = { bodies?: Record<string, unknown>; mutate?: (files: Map<string, Buffer>) => void; skipManifestEntry?: string };
+// Authored P06 (fixed-shortlist ranking) responses, one per classification outcome. All values are invented.
+export type P06Variant = "all" | "partial" | "unexpected" | "unscored" | "disordered" | "non-place" | "unusable";
+export const P06_ATTEMPT = "0a0b0c0d-1111-4222-8333-444455556666";
+const nycEntity = (affinity: number | null) => ({ entity_id: AUTHORED.venue, name: "Authored Jazz Room", type: "urn:entity", subtype: "urn:entity:place",
+  properties: { geocode: { city: "New York", country_code: "US", name: "Authored Village" } }, ...(affinity === null ? {} : { query: { affinity } }) });
+const farEntity = (affinity: number | null) => ({ entity_id: AUTHORED.far, name: "Authored Far Pavilion", type: "urn:entity", subtype: "urn:entity:place",
+  properties: { geocode: { city: "Authored City", country_code: "ES", name: "Authored Quarter" } }, ...(affinity === null ? {} : { query: { affinity } }) });
+export function p06Body(variant: P06Variant): unknown {
+  const wrap = (entities: unknown[]) => ({ success: true, results: { entities } });
+  switch (variant) {
+    case "all": return wrap([nycEntity(0.82), farEntity(0.41)]);
+    case "partial": return wrap([farEntity(0.41)]);
+    case "unexpected": return wrap([nycEntity(0.82), farEntity(0.41), { ...farEntity(0.2), entity_id: "AUTHORED-INTRUDER-0001" }]);
+    case "unscored": return wrap([nycEntity(null), farEntity(null)]);
+    case "disordered": return wrap([nycEntity(0.3), farEntity(0.9)]);
+    case "non-place": return wrap([nycEntity(0.8), { ...farEntity(0.4), subtype: "urn:entity:brand" }]);
+    case "unusable": return { success: false };
+  }
+}
+export type P06SeedOptions = { variant?: P06Variant; body?: unknown; sealed?: boolean; summary?: Record<string, unknown>; omitRaw?: boolean; extraAttempt?: boolean };
+export type SeedOptions = { bodies?: Record<string, unknown>; mutate?: (files: Map<string, Buffer>) => void; skipManifestEntry?: string; p06?: P06SeedOptions };
 // Writes a private/qloo-probes tree with manifests whose hashes match the files (unless a test mutates them).
 export async function seedRecordedRoot(options: SeedOptions = {}): Promise<string> {
   await mkdir(".artifacts", { recursive: true });
@@ -55,9 +75,23 @@ export async function seedRecordedRoot(options: SeedOptions = {}): Promise<strin
       reason: spec.reason, dispatches: 1, http_status: 200, response_bytes: raw ? raw.length : 65_537, raw_saved_privately: !!raw, transport_settled: true } })));
     if (raw) files.set(`${dir}/response.raw.json`, raw);
   }
+  if (options.p06) {
+    const p06 = options.p06; const dir = `private/qloo-probes/p06/attempts/${P06_ATTEMPT}`;
+    const raw = p06.omitRaw ? null : Buffer.from(JSON.stringify(p06.body ?? p06Body(p06.variant ?? "all")));
+    files.set(`${dir}/attempt.json`, Buffer.from(JSON.stringify({ record_revision: "tastegate.probe-attempt.v5", profile_revision: "tastegate.p06.shortlist-rank.capture-256k.v1",
+      profile: { revision: "tastegate.p06.shortlist-rank.capture-256k.v1", method: "GET", origin: "https://hackathon.api.qloo.com", path: "/v2/insights" },
+      checkpoint: { attempt_id: P06_ATTEMPT, approval: "APPROVE_P06_SHORTLIST_RANK_ONLY", signal_entity_id: AUTHORED.artist, signal_review_sha256: sha(review),
+        p01_raw_sha256: sha(p01Raw), shortlist_entity_ids: [AUTHORED.venue, AUTHORED.far] }, reserved_utc: "2026-10-20T00:00:00.000Z" })));
+    files.set(`${dir}/summary.json`, Buffer.from(JSON.stringify({ summary: { probe: "P06", attempt_id: P06_ATTEMPT, source_mode: "live_probe", status: "UNKNOWN",
+      reason: "SCHEMA_REVIEW_REQUIRED", dispatches: 1, http_status: 200, response_bytes: raw ? raw.length : 0, raw_saved_privately: !!raw, transport_settled: true, ...p06.summary } })));
+    if (raw) files.set(`${dir}/response.raw.json`, raw);
+    if (p06.extraAttempt) files.set("private/qloo-probes/p06/attempts/1b1c1d1e-2222-4333-9444-555566667777/attempt.json", Buffer.from("{}"));
+    if (p06.sealed !== false) files.set("private/qloo-probes/phase2b-p06-execution-review/post-execution-integrity.private.json", Buffer.from(JSON.stringify(
+      [...files.entries()].filter(([path]) => path.startsWith(dir + "/")).map(([path, bytes]) => ({ path, sha256: sha(bytes) })))));
+  }
   const manifest = (filter: (path: string) => boolean) => Buffer.from(JSON.stringify([...files.entries()]
     .filter(([path]) => filter(path) && path !== options.skipManifestEntry && path.includes("/attempts/")).map(([path, bytes]) => ({ path, sha256: sha(bytes) }))));
-  files.set("private/qloo-probes/phase1b4-review-20261018T220843Z/all-historical-integrity.private.json", manifest((p) => !p.includes("/p05/")));
+  files.set("private/qloo-probes/phase1b4-review-20261018T220843Z/all-historical-integrity.private.json", manifest((p) => !p.includes("/p05/") && !p.includes("/p06/")));
   files.set("private/qloo-probes/phase1b4-p05-execution-review/post-execution-integrity.private.json", manifest((p) => p.includes("/p05/")));
   // Tampering is applied only after the manifests were computed from the authentic authored bytes.
   options.mutate?.(files);

@@ -3,8 +3,8 @@
 import { useState } from "react";
 import type { AnyAuditReport, AuditInput, CandidateAudit, Confirmation, Entity, Finding, ProviderAuditReport, Repair } from "../src/domain/contracts";
 import {
-  FINDING_LABEL, OUTCOME_TEXT, STAGES, VERDICT, describeConstraint, evidenceSource, highlights, isProvider, pendingChoices, proposedEntity,
-  reachedStages, resolvedEntity, slotOutcomes, stageCalls, subChecks, type Choice, type Verdict,
+  FINDING_LABEL, MODE_INFO, OUTCOME_TEXT, STAGES, VERDICT, describeConstraint, evidenceSource, highlights, proposedEntity,
+  reachedStages, resolvedEntity, slotOutcomes, stageCalls, subChecks, type Choice, type EvidenceMode, type Verdict,
 } from "./view-model";
 
 export function VerdictPill({ verdict, large = false }: { verdict: Verdict; large?: boolean }) {
@@ -12,11 +12,20 @@ export function VerdictPill({ verdict, large = false }: { verdict: Verdict; larg
   return <span className={`pill tone-${v.tone}${large ? " pill-large" : ""}`} title={v.description}>
     <span aria-hidden="true" className="pill-icon">{v.icon}</span>{v.label}<span className="sr-only">: {v.description}</span></span>;
 }
-export function SourceBadge({ mode }: { mode: "recorded_live" | "fixture" }) {
-  return mode === "recorded_live" ? <span className="badge tone-recorded">Recorded Qloo responses</span> : <span className="badge tone-synthetic">Synthetic fixture</span>;
+export function SourceBadge({ mode }: { mode: EvidenceMode }) {
+  const m = MODE_INFO[mode];
+  return <span className={`badge tone-${m.tone}`} title={m.summary}><span className="mode-word">{m.label}</span> {m.badge}</span>;
+}
+// Said once at the top of every result screen: which evidence this run used, in words.
+export function ModeBanner({ report }: { report: AnyAuditReport }) {
+  const m = MODE_INFO[report.source_mode];
+  // A recorded run in which nothing was replayed (a server with no recordings) must not claim to have replayed Qloo responses.
+  const empty = report.source_mode === "recorded_live" && report.usage.recorded_replays === 0;
+  return <p className={`mode-banner tone-${m.tone}`} role="note"><strong>{m.label}</strong>
+    <span>{empty ? "No Qloo evidence was available for this plan: nothing was replayed and nothing was requested, so every provider fact is UNKNOWN. Your plan was still validated and checked for what needs no provider data." : m.summary}</span></p>;
 }
 
-export function PlanView({ input, mode }: { input: AuditInput; mode: "recorded_live" | "fixture" }) {
+export function PlanView({ input, mode, origin }: { input: AuditInput; mode: EvidenceMode; origin: "sample" | "yours" }) {
   return <div className="plan-grid">
     <div className="panel">
       <h3>Request</h3><p className="task">{input.task}</p>
@@ -28,7 +37,7 @@ export function PlanView({ input, mode }: { input: AuditInput; mode: "recorded_l
       <ul className="chips">{input.constraints.map((c) => <li key={c.id} className="chip chip-hard">{describeConstraint(c)}</li>)}</ul>
     </div>
     <div className="panel">
-      <h3>Upstream agent’s recommendations <span className="muted small">({mode === "recorded_live" ? "authored sample plan, not a real model run" : "authored synthetic plan"})</span></h3>
+      <h3>Upstream agent’s recommendations <span className="muted small">({origin === "yours" ? "your input" : mode === "fixture" ? "authored synthetic plan" : "authored sample plan, not a real model run"})</span></h3>
       <ol className="plan-items">{input.recommendations.map((r) => <li key={r.id}>
         <strong>{r.name}</strong>{r.address_hint && <span className="muted small"> · {r.address_hint}</span>}
         {r.claims.length > 0 && <ul className="claims">{r.claims.map((c) => <li key={c}><span className="claim-tag">claim</span>“{c}”</li>)}</ul>}
@@ -37,24 +46,23 @@ export function PlanView({ input, mode }: { input: AuditInput; mode: "recorded_l
   </div>;
 }
 
-export function ConfirmPanel({ report, busy, onSubmit }: { report: ProviderAuditReport; busy: boolean; onSubmit: (c: Confirmation[]) => void }) {
-  const choices = pendingChoices(report);
+// One question per identity the audit cannot settle by itself. Nothing is chosen by rank, count or label.
+export function ConfirmPanel({ report, choices, busy, title, intro, submitLabel, skipLabel, onSubmit }: {
+  report: ProviderAuditReport; choices: Choice[]; busy: boolean; title: string; intro: string; submitLabel: string; skipLabel: string; onSubmit: (c: Confirmation[]) => void }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const complete = choices.every((c) => answers[c.targetId]);
   const submit = () => onSubmit([...report.confirmations, ...choices.map((c): Confirmation => answers[c.targetId] === "skip" ?
     { target_id: c.targetId, decision: "skip" } : { target_id: c.targetId, decision: "select", ref: answers[c.targetId]! })]);
-  return <section className="confirm" aria-labelledby="confirm-title">
-    <div className="section-head"><h2 id="confirm-title">Confirm identities</h2><span className="badge tone-recorded">{choices.length} decisions</span></div>
-    <p className="lede-small">Qloo returned these candidates. TasteGate never picks a provider identity by rank, count or label — you decide.
-      Nothing is sent to Qloo; the next step replays the same recordings.</p>
-    <div className="choice-grid">{choices.map((c) => <ChoiceGroup key={c.targetId} choice={c} value={answers[c.targetId]}
+  return <section className="confirm" aria-labelledby={`confirm-${choices[0]?.kind ?? "x"}`}>
+    <div className="section-head"><h3 id={`confirm-${choices[0]?.kind ?? "x"}`}>{title}</h3><span className="badge tone-pending">{choices.length} decision{choices.length === 1 ? "" : "s"}</span></div>
+    <p className="lede-small">{intro}</p>
+    <div className="choice-grid">{choices.map((c) => <ChoiceGroup key={c.targetId} choice={c} value={answers[c.targetId]} skipLabel={skipLabel}
       onChange={(v) => setAnswers((a) => ({ ...a, [c.targetId]: v }))} />)}</div>
-    <div className="actions"><button type="button" className="primary" disabled={!complete || busy} onClick={submit}>
-      {busy ? "Continuing…" : "Continue the audit with my confirmations"}</button>
+    <div className="actions"><button type="button" className="primary" disabled={!complete || busy} onClick={submit}>{busy ? "Continuing…" : submitLabel}</button>
       {!complete && <span className="muted small">Answer every question to continue.</span>}</div>
   </section>;
 }
-function ChoiceGroup({ choice, value, onChange }: { choice: Choice; value: string | undefined; onChange: (v: string) => void }) {
+function ChoiceGroup({ choice, value, skipLabel, onChange }: { choice: Choice; value: string | undefined; skipLabel: string; onChange: (v: string) => void }) {
   const name = `choice-${choice.targetId}`;
   return <fieldset className="panel choice">
     <legend>{choice.question}</legend>
@@ -65,7 +73,7 @@ function ChoiceGroup({ choice, value, onChange }: { choice: Choice; value: strin
     </label>)}
     <label className={`option option-skip${value === "skip" ? " selected" : ""}`}>
       <input type="radio" name={name} value="skip" checked={value === "skip"} onChange={() => onChange("skip")} />
-      <span>None of these <span className="muted">— keep it unresolved</span></span>
+      <span>{skipLabel}</span>
     </label>
   </fieldset>;
 }
@@ -100,7 +108,7 @@ function FindingList({ report, findings }: { report: AnyAuditReport; findings: F
       return <span key={ref} className={`badge tone-${src.tone}`} title={src.detail}>{src.label}</span>; })}</span>
   </li>)}</ul>;
 }
-function AuditCard({ report, audit, title, entity, claims, note }: { report: AnyAuditReport; audit: CandidateAudit; title: string; entity: Entity | null; claims: number; note?: string }) {
+export function AuditCard({ report, audit, title, entity, claims, note }: { report: AnyAuditReport; audit: CandidateAudit; title: string; entity: Entity | null; claims: number; note?: string }) {
   return <article className={`card verdict-${VERDICT[audit.verdict].tone}`} aria-label={`${title}: ${VERDICT[audit.verdict].label}`}>
     <header className="card-head"><div><h4>{title}</h4>{entity && entity.name !== title && <p className="muted small">Provider entity: {entity.name}</p>}</div><VerdictPill verdict={audit.verdict} /></header>
     {note && <p className="card-note">{note}</p>}
@@ -110,15 +118,17 @@ function AuditCard({ report, audit, title, entity, claims, note }: { report: Any
     <details className="why"><summary>Evidence and findings ({audit.findings.length})</summary><FindingList report={report} findings={audit.findings} /></details>
   </article>;
 }
-function RepairCard({ report, repair }: { report: AnyAuditReport; repair: Repair }) {
+export function RepairCard({ report, repair }: { report: AnyAuditReport; repair: Repair }) {
   const proposal = proposedEntity(report, repair);
   const discovery = proposal ? report.evidence.find((e) => e.evidence_id === proposal.evidenceRef) : undefined;
   const scope = discovery?.snapshot.kind === "discover_places" ? discovery.snapshot : undefined;
   const failed = repair.revalidation.findings.filter((f) => f.state === "fail").map((f) => FINDING_LABEL[f.code]);
-  const note = repair.accepted ? "Accepted after revalidation: an independent lookup and a common-set ranking confirmed it." :
-    `Rejected after revalidation${failed.length ? `: ${failed.join(" and ").toLowerCase()}` : ": identity, constraints or taste evidence could not be confirmed"}.`;
+  const basis = repair.identity_basis === "user_confirmation" ? " Its identity rests on your confirmation of the provider's details." : repair.identity_basis === "independent_lookup" ? " Its identity was confirmed by a separate provider lookup." : "";
+  const note = repair.accepted ? `Accepted after revalidation: identity, every hard constraint and taste evidence all passed.${basis}` :
+    `Rejected after revalidation${failed.length ? `: ${failed.join(" and ").toLowerCase()}` : ": identity, constraints or taste evidence could not be confirmed"}.${basis}`;
+  const origin = report.source_mode === "fixture" ? "synthetic discovery" : report.source_mode === "authorized_live" ? "a live Qloo Insights discovery" : "a recorded Qloo Insights discovery";
   return <div className="repair">
-    <p className="repair-origin">Proposed by {report.source_mode === "recorded_live" ? "a recorded Qloo Insights discovery" : "synthetic discovery"}
+    <p className="repair-origin">Proposed by {origin}
       {scope?.signal_scope === "first_confirmed_artist" && " from your confirmed artist signal only, with no geography filter"}.</p>
     <AuditCard report={report} audit={repair.revalidation} title={proposal?.entity.name ?? repair.proposed_entity_id}
       entity={proposal?.entity ?? null} claims={0} note={note} />
@@ -128,7 +138,6 @@ function RepairCard({ report, repair }: { report: AnyAuditReport; repair: Repair
 }
 
 export function Summary({ report }: { report: AnyAuditReport }) {
-  const provider = isProvider(report);
   const accepted = report.repairs.filter((r) => r.accepted).length;
   return <section className="summary" aria-label="Audit summary">
     <div className="summary-status">
@@ -138,23 +147,32 @@ export function Summary({ report }: { report: AnyAuditReport }) {
       <p className="summary-text">{VERDICT[report.final_status].description} Completion: <strong>{report.completion}</strong>.
         {report.repairs.length > 0 && ` ${report.repairs.length} replacement${report.repairs.length > 1 ? "s" : ""} proposed, ${accepted} accepted after revalidation.`}</p>
     </div>
-    <div className="highlights"><h3>What the gate found</h3>
-      <ul>{highlights(report).map((h) => <li key={h.text} className={`highlight tone-${h.tone}`}>{h.text}</li>)}</ul></div>
-    <dl className="metrics">
-      <div><dt>New Qloo requests</dt><dd>{report.usage.qloo_dispatches}</dd></div>
-      {provider ? <><div><dt>Recorded Qloo responses used</dt><dd>{report.usage.recorded_replays}</dd></div>
-        <div><dt>Unavailable operations</dt><dd>{report.usage.unavailable_operations}</dd></div>
-        <div><dt>Bounded calls</dt><dd>{report.usage.adapter_calls} / 14</dd></div></> :
-        <div><dt>Synthetic fixture calls</dt><dd>{report.usage.fixture_calls} / 14</dd></div>}
-      <div><dt>Repair rounds</dt><dd>{report.usage.repair_rounds} / 1</dd></div>
-      <div><dt>Elapsed</dt><dd>{report.usage.elapsed_ms.toFixed(0)} ms</dd></div>
-    </dl>
+    <Highlights report={report} />
+    <Metrics report={report} />
   </section>;
 }
+export function Highlights({ report }: { report: AnyAuditReport }) {
+  return <div className="highlights"><h3>What the gate found</h3>
+    <ul>{highlights(report).map((h) => <li key={h.text} className={`highlight tone-${h.tone}`}>{h.text}</li>)}</ul></div>;
+}
+export function Metrics({ report }: { report: AnyAuditReport }) {
+  return <dl className="metrics">
+    {report.source_mode === "fixture" ? <>
+      <div><dt>Qloo requests</dt><dd>0</dd></div><div><dt>Synthetic fixture calls</dt><dd>{report.usage.fixture_calls} / 14</dd></div></> :
+      report.source_mode === "authorized_live" ? <>
+        <div><dt>Fresh Qloo requests</dt><dd>{report.usage.qloo_dispatches}</dd></div>
+        <div><dt>Unavailable operations</dt><dd>{report.usage.unavailable_operations}</dd></div><div><dt>Bounded calls</dt><dd>{report.usage.adapter_calls} / 14</dd></div></> : <>
+        <div><dt>New Qloo requests</dt><dd>{report.usage.qloo_dispatches}</dd></div><div><dt>Recorded Qloo responses used</dt><dd>{report.usage.recorded_replays}</dd></div>
+        <div><dt>Unavailable operations</dt><dd>{report.usage.unavailable_operations}</dd></div><div><dt>Bounded calls</dt><dd>{report.usage.adapter_calls} / 14</dd></div></>}
+    <div><dt>Repair rounds</dt><dd>{report.usage.repair_rounds} / 1</dd></div>
+    <div><dt>Elapsed</dt><dd>{report.usage.elapsed_ms.toFixed(0)} ms</dd></div>
+  </dl>;
+}
 
+// Per recommendation: the verdict on the upstream item and, beside it, what ships after the gate.
 export function Comparison({ report }: { report: AnyAuditReport }) {
   return <section aria-labelledby="compare-title">
-    <div className="section-head"><h2 id="compare-title">Before and after</h2><SourceBadge mode={report.source_mode} /></div>
+    <div className="section-head"><h3 id="compare-title">As proposed, and after the gate</h3><SourceBadge mode={report.source_mode} /></div>
     <div className="compare-head" aria-hidden="true"><span>Upstream plan, as proposed</span><span>After the gate</span></div>
     {slotOutcomes(report).map(({ audit, repairs, accepted, outcome, recommendation }) => <div className="compare-row" key={audit.candidate_id}>
       <AuditCard report={report} audit={audit} title={recommendation.name} entity={resolvedEntity(report, audit)} claims={recommendation.claims.length} />
@@ -179,7 +197,7 @@ export function Signals({ report }: { report: ProviderAuditReport }) {
       return <li key={p.preference_id}><strong>{pref.text}</strong> <span className={`badge tone-${p.status === "resolved" ? "pass" : "unknown"}`}>{p.status}</span> <span className="muted">{label}</span></li>;
     })}</ul>
     <p className="muted small">Sent to Qloo Insights: {report.insights_policy.signal_scope === "first_confirmed_artist" ?
-      "the confirmed artist only — the one context that was recorded. Film and tag confirmations are audited but not yet used as Insights signals." : "all confirmed signals."}</p>
+      "the confirmed artist only — the one context that is supported. Film and tag confirmations are audited but not used as Insights signals." : "all confirmed signals."}</p>
   </section>;
 }
 

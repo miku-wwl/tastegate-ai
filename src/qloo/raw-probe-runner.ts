@@ -6,7 +6,12 @@ import { QlooServerConfig } from "./server-config";
 import { ProbeReasonSchema, type ProbeReason } from "./p01-profile";
 import { probeDefinition, type ExecutableProbe, type RawProbeSummary } from "./probe-definitions";
 import { matchesP05Signal, type P05SignalBinding } from "./p05-signal";
+import { matchesP06Shortlist, type P06ShortlistBinding } from "./p06-shortlist";
 import { unsafeP01Diagnostics } from "./p01-local-env";
+
+// A trusted in-process binding to private reviewed identities. Only code that verified the private evidence can
+// mint one (WeakSet-registered), so untrusted checkpoint/model objects can never stand in for it.
+export type ProbeBinding = P05SignalBinding | P06ShortlistBinding;
 
 export interface ProbeRequest {
   readonly url: string; readonly method: "GET"; readonly headers: Readonly<Record<string, string>>;
@@ -49,7 +54,7 @@ function rejectReflection(bytes: Uint8Array, key: string, raw: unknown): void {
 }
 
 function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe", loadConfig: () => QlooServerConfig,
-  send: LocalProbeTransport["send"], store: ProbeStore, p05Signal?: P05SignalBinding) {
+  send: LocalProbeTransport["send"], store: ProbeStore, binding?: ProbeBinding) {
   const def = probeDefinition(probe);
   let started = false; let busy = false;
   return Object.freeze({
@@ -59,7 +64,8 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
       if (!def.profileSchema.safeParse(options.profile ?? def.profile).success) return def.blocked("INVALID_PROFILE");
       if (!def.validCheckpoint(options.checkpoint)) return def.blocked();
       const checkpoint = def.checkpointSchema.parse(options.checkpoint);
-      if (probe === "P05" && !matchesP05Signal(checkpoint, p05Signal)) return def.blocked("EVIDENCE_UNAVAILABLE");
+      if (probe === "P05" && !matchesP05Signal(checkpoint, binding as P05SignalBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
+      if (probe === "P06" && !matchesP06Shortlist(checkpoint, binding as P06ShortlistBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
       if (busy) return def.blocked("CONCURRENCY_LIMIT");
       if (started) return def.blocked("CALL_BUDGET_EXHAUSTED");
       if (options.signal?.aborted) return def.blocked("CANCELLED");
@@ -77,8 +83,12 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
         return result;
       }
       started = true;
+      // The ONLY places private IDs enter a request: markers in the fixed profile are replaced by the verified binding.
+      const p06 = binding as P06ShortlistBinding | undefined;
       const url = new URL(def.profile.path, def.profile.origin); url.search = new URLSearchParams(probe === "P05" ?
-        { ...def.profile.params, "signal.interests.entities": p05Signal!.entityId } : def.profile.params).toString();
+        { ...def.profile.params, "signal.interests.entities": (binding as P05SignalBinding).entityId } : probe === "P06" ?
+        { ...def.profile.params, "signal.interests.entities": p06!.signalEntityId, "filter.results.entities": `${p06!.nycEntityId},${p06!.controlEntityId}` } :
+        def.profile.params).toString();
       const controller = new AbortController(); const began = performance.now(); const deadline = began + config.requestTimeoutMs;
       let timer: ReturnType<typeof setTimeout> | undefined; let cancel: (() => void) | undefined;
       let httpStatus: number | null = null; let responseBytes: number | null = null; let saved = false;
@@ -129,10 +139,10 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
   });
 }
 
-export function createLocalRawProbeRunner(probe: ExecutableProbe, config: QlooServerConfig, transport: LocalProbeTransport, store: ProbeStore, p05Signal?: P05SignalBinding) {
+export function createLocalRawProbeRunner(probe: ExecutableProbe, config: QlooServerConfig, transport: LocalProbeTransport, store: ProbeStore, binding?: ProbeBinding) {
   assertServer();
   if (transport.kind !== "local-test-double") throw new Error("LOCAL_TEST_DOUBLE_REQUIRED");
-  return runner(probe, "offline_test", () => config, (r) => transport.send(r), store, p05Signal);
+  return runner(probe, "offline_test", () => config, (r) => transport.send(r), store, binding);
 }
 
 // Deliberately no transport injection for live mode. Node HTTPS issues one request, does not
@@ -153,10 +163,11 @@ function sendNative(request: ProbeRequest): Promise<Response> {
 }
 let liveBusy = false; const liveSpent = new Set<string>();
 export async function executeLiveRawProbe(probe: ExecutableProbe, options: { checkpoint?: unknown; profile?: unknown; signal?: AbortSignal }, store: ProbeStore,
-  trustedLocalConfig?: QlooServerConfig, p05Signal?: P05SignalBinding): Promise<RawProbeSummary> {
+  trustedLocalConfig?: QlooServerConfig, binding?: ProbeBinding): Promise<RawProbeSummary> {
   assertServer(); const def = probeDefinition(probe);
   if (!def.validCheckpoint(options.checkpoint)) return def.blocked();
-  if (probe === "P05" && !matchesP05Signal(options.checkpoint, p05Signal)) return def.blocked("EVIDENCE_UNAVAILABLE");
+  if (probe === "P05" && !matchesP05Signal(options.checkpoint, binding as P05SignalBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
+  if (probe === "P06" && !matchesP06Shortlist(options.checkpoint, binding as P06ShortlistBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
   if (unsafeP01Diagnostics()) return def.blocked("UNSAFE_DIAGNOSTICS");
   const id = probe + ":" + def.checkpointSchema.parse(options.checkpoint).attempt_id;
   if (liveBusy) return def.blocked("CONCURRENCY_LIMIT");
@@ -164,7 +175,7 @@ export async function executeLiveRawProbe(probe: ExecutableProbe, options: { che
   liveBusy = true;
   let releaseSlot = true;
   try {
-    const result = await runner(probe, "live_probe", () => trustedLocalConfig ?? QlooServerConfig.load(), sendNative, store, p05Signal).run(options);
+    const result = await runner(probe, "live_probe", () => trustedLocalConfig ?? QlooServerConfig.load(), sendNative, store, binding).run(options);
     if (result.dispatches === 1) liveSpent.add(id);
     releaseSlot = result.transport_settled; return result;
   } catch { liveSpent.add(id); releaseSlot = false; throw new Error("PROBE_EXECUTION_INTERRUPTED"); }
