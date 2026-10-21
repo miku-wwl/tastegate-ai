@@ -6,6 +6,7 @@ import type { Confirmation, ProviderAuditReport } from "../src/domain/contracts"
 import { ProviderAuditReportSchema } from "../src/domain/report-schema";
 import { RECORDED_SPECS, createRecordedAdapter, loadRecordedEvidence } from "../src/qloo/recorded-adapter";
 import { RECORDED_INSIGHTS_POLICY, RECORDED_SCENARIO_ID, getRecordedScenarioInput } from "../src/scenarios/recorded-nyc";
+import { culturalComparison } from "../app/cultural-comparison";
 
 // Runs only where the owner's ignored private captures exist (never in a clean clone or CI). It asserts
 // generic invariants only: no provider ID, location, score or returned name is written into this file.
@@ -73,6 +74,10 @@ describe.skipIf(!available)("recorded Qloo evidence (owner-local private capture
       expect([...ranks].sort()).toEqual([1, 2]); // one query, two distinct positions; the order itself is not asserted here
     }
     expect(repair.revalidation.findings.filter((f) => f.state === "fail").map((f) => f.code)).toEqual(["CITY_MISMATCH", "COUNTRY_MISMATCH"]);
+    const comparison = culturalComparison(r);
+    expect(comparison.valid_candidates).toBe(1);
+    expect(comparison.status).toBe("INSUFFICIENT_VALID_CANDIDATES");
+    expect(comparison.rows.filter((row) => row.role === "REPLACEMENT").every((row) => !row.eligible)).toBe(true);
     expect(r).toMatchObject({ before_status: "UNKNOWN", final_status: "UNKNOWN", completion: "partial", stop_reason: "COMPLETE" });
     expect(r.usage).toMatchObject({ qloo_dispatches: 0, adapter_calls: 8, recorded_replays: ranked ? 6 : 5, unavailable_operations: ranked ? 2 : 3, repair_rounds: 1 });
     const text = JSON.stringify(r);

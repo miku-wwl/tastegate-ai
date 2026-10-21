@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { forbiddenPathLabels, scanTraces, scanTree, summarizeFindings, variants } from "../scripts/lib/deploy-scan.mjs";
+import { deriveSensitiveTokens } from "../scripts/lib/private-tokens.mjs";
 
 // Every needle below is invented. The scanner must find it in any serialization a bundler might produce, flag sensitive
 // paths and traces, say what it skipped, and never repeat the needle in its output.
@@ -15,6 +16,18 @@ afterAll(async () => { for (const r of roots) await rm(r, { recursive: true, for
 const KEY = "CANARY-KEY-8f3a91c7d2e45b60"; const ID = "CANARY_PROVIDER_ID_5c2d7e90";
 
 describe("canary content scan", () => {
+  it("derives quoted credentials and proposal approval digests without publishing their values", async () => {
+    const digest = "c".repeat(64), token = "SHA256:" + digest.slice(0, 32);
+    const root = await tree({ ".env.local": 'QLOO_API_KEY="' + KEY + '"\n',
+      "private/qloo-probes/p07-proposals/authored.json": JSON.stringify({ terms_sha256: digest }),
+      "public/leak.txt": KEY + " " + token });
+    const derived = await deriveSensitiveTokens(root);
+    expect(derived.tokens.has(KEY)).toBe(true); expect(derived.tokens.has(token)).toBe(true);
+    const scan = await scanTree(root, { needles: [...derived.tokens].map(([value, label]) => [label, value]), skipDirs: ["private"] });
+    expect(scan.findings.some((f) => f.label === "approval_digest_token")).toBe(true);
+    expect(scan.findings.some((f) => f.label === "credential")).toBe(true);
+    expect(JSON.stringify(scan)).not.toContain(KEY); expect(JSON.stringify(scan)).not.toContain(token);
+  });
   it("finds a secret in plain, URL-encoded, JSON-escaped, base64 and hex form, and reports labels only", async () => {
     const secret = `${KEY}"quoted\\slash`;
     const root = await tree({

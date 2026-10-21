@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { parseEnv } from "node:util";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Reviewed allowlist: public by design or required verbatim in product code.
@@ -73,9 +74,22 @@ export async function deriveSensitiveTokens(root, { publicAttemptIds = new Set()
   }
   for (const name of [".env.local", ".env"]) {
     if (!existsSync(join(root, name))) continue;
-    for (const line of (await readFile(join(root, name), "utf8")).split(/\r?\n/)) {
-      const match = /^(QLOO_API_KEY|LLM_API_KEY)=(.+)$/.exec(line.trim());
-      if (match && match[2].trim().length >= 8) add(match[2].trim(), "credential");
+    const env = parseEnv(await readFile(join(root, name), "utf8"));
+    for (const key of ["QLOO_API_KEY", "LLM_API_KEY"]) if (env[key]?.length >= 8) add(env[key], "credential");
+  }
+  // Offer digests and request bindings are private even before a receipt exists. The public approval sentence is shown only
+  // at the owner's current gate, never shipped in source/docs/review archives. This is scanning, not a consent decision.
+  if (existsSync(base)) for (const name of await readdir(base, { recursive: true })) {
+    const rel = String(name).replaceAll("\\", "/");
+    if (!/^(p07-proposals\/.*|p07-approval-receipt-.*)\.json$/.test(rel)) continue;
+    let value; try { value = JSON.parse(await readFile(join(base, name), "utf8")); } catch { continue; }
+    for (const [key, token] of Object.entries(value)) {
+      if (typeof token !== "string") continue;
+      if (/sha256$/.test(key) && /^[a-f0-9]{64}$/.test(token)) {
+        add(token, "private_approval_binding");
+        if (key === "terms_sha256") add("SHA256:" + token.slice(0, 32), "approval_digest_token");
+      }
+      if (key === "owner_reply" && token.startsWith("APPROVE ") && token.includes(" SHA256:")) add(token, "approval_sentence");
     }
   }
   return { tokens, available: captures > 0, captures };

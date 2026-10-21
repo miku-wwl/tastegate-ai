@@ -46,7 +46,9 @@ const json = async (response: Response) => await response.json() as Record<strin
 beforeEach(() => { vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network is forbidden in this suite")); vi.spyOn(https, "request").mockImplementation(() => { throw new Error("Network is forbidden in this suite"); }); });
 afterEach(() => { expect(globalThis.fetch).not.toHaveBeenCalled(); expect(https.request).not.toHaveBeenCalled(); vi.restoreAllMocks(); });
 afterAll(async () => { for (const r of roots) await rm(r, { recursive: true, force: true }); });
-const untilSent = async (seen: Seen, count = 1) => { for (let i = 0; i < 5000 && seen.length < count; i++) await new Promise<void>((done) => setImmediate(done)); expect(seen.length).toBe(count); };
+const untilSent = async (seen: Seen, count = 1) => {
+  await vi.waitFor(() => expect(seen.length).toBe(count), { timeout: 2000, interval: 10 });
+};
 
 describe("catalog: public, validated, no-store", () => {
   it("publishes modes, authored inputs, public history and the exact recorded lookups, and nothing private", async () => {
@@ -54,7 +56,7 @@ describe("catalog: public, validated, no-store", () => {
     expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("no-store"); expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     const catalog = CatalogSchema.parse(await response.json());
     expect(catalog.modes).toEqual({ synthetic: "AVAILABLE", recorded_live: "AVAILABLE", live: "LOCKED" });
-    expect(catalog.scenarios.map((s) => s.mode)).toEqual(["recorded_live", ...Array(6).fill("fixture")]);
+    expect(catalog.scenarios.map((s) => s.mode)).toEqual(["recorded_live", ...Array(7).fill("fixture")]);
     expect(catalog.recorded_coverage).toEqual({ artist: ["Radiohead"], movie: ["In the Mood for Love"], place: ["Blue Note New York"], tag: ["jazz"] });
     expect(catalog.pending_request).toMatchObject({ id: "P06", state: "OWNER_APPROVAL_REQUIRED" });
     expect(catalog.live_gate).toMatchObject({ status: "LOCKED", reason: "CREDENTIAL_NOT_CONFIGURED", remaining_requests: null });

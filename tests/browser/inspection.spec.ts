@@ -9,7 +9,8 @@ import { AuditReportSchema, ProviderAuditReportSchema } from "../../src/domain/r
 const canary = "local-browser-canary-not-a-provider-key";
 const recordedHere = existsSync("private/qloo-probes/p05/attempts/154bd4c0-ea64-49c5-ad95-cb57efd7647a/response.raw.json");
 // New private screenshots belong to this run; never overwrite a prior phase's review evidence.
-const PUBLIC_SHOTS = ".artifacts/screens"; const PRIVATE_SHOTS = "private/browser-runs/" + randomUUID();
+const PUBLIC_SHOTS = process.env.TASTEGATE_PUBLIC_SCREENSHOT_DIR ?? ".artifacts/screens"; const PRIVATE_SHOTS = "private/browser-runs/" + randomUUID();
+const RUN_ARTIFACTS = ".artifacts/browser-runs/" + randomUUID();
 function guard(page: Page) {
   const externalRequests: string[] = []; const errors: string[] = [];
   void page.route("**/*", async (route) => {
@@ -63,8 +64,8 @@ test("a synthetic audit walks the five screens, keeps residual uncertainty visib
   expect(JSON.parse(await page.getByTestId("report-json").innerText()).run_id).toBe(report.run_id);
   expect(report.usage.fixture_calls).toBe(9); expect(report.usage.qloo_dispatches).toBe(0);
   expect(g.externalRequests).toEqual([]); expect(g.errors).toEqual([]);
-  await mkdir(".artifacts", { recursive: true });
-  await writeFile(".artifacts/phase2b-browser-run.json", JSON.stringify({ evidence_kind: "ACTUAL_LOCAL_BROWSER_EXECUTION_SYNTHETIC_DATA", report, externalRequests: g.externalRequests, errors: g.errors }, null, 2) + "\n");
+  await mkdir(RUN_ARTIFACTS, { recursive: true });
+  await writeFile(RUN_ARTIFACTS + "/results.json", JSON.stringify({ evidence_kind: "ACTUAL_LOCAL_BROWSER_EXECUTION_SYNTHETIC_DATA", report, externalRequests: g.externalRequests, errors: g.errors }, null, 2) + "\n");
 });
 
 test("repair is reported honestly: verified, then rejected on a separate run, never relabelled", async ({ page }) => {

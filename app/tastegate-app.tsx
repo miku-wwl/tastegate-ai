@@ -78,6 +78,11 @@ export default function TasteGateApp() {
     void post({ scenario: sample.id }, undefined, () => 3);
   }
   const guideStep = guided && report && screen >= 3 ? (screen - 2) as 1 | 2 | 3 : null;
+  function startPriorityDemo() {
+    const sample = catalog?.scenarios.find((s) => s.id === "valid-pool-priority" && s.mode === "fixture"); if (!sample) return;
+    setPlan({ kind: "scenario", id: sample.id }); setSource("recorded"); setLiveAck(false); setReport(null); setGuided(false);
+    void post({ scenario: sample.id }, undefined, () => 5);
+  }
 
   const live = catalog?.live_gate.status === "AVAILABLE";
   return <>
@@ -97,7 +102,7 @@ export default function TasteGateApp() {
         <h1>Don’t just generate recommendations.<br /><span className="hero-accent">Audit them, repair them, verify the evidence.</span></h1>
         <p className="lede">TasteGate checks an AI agent’s plan against Qloo taste data and your hard constraints, repairs only what fails, and re-checks every replacement.
           When it cannot prove something, it says so.</p>
-        <HowItWorks onStartGuide={catalog ? startGuided : undefined} busy={busy} />
+        <HowItWorks onStartGuide={catalog ? startGuided : undefined} onStartPriority={catalog ? startPriorityDemo : undefined} busy={busy} />
       </section>}
 
       <nav className="stepper" aria-label="Progress"><ol>{SCREENS.map((s) => {

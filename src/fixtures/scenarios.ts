@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AuditInputSchema, type AuditInput } from "../domain/contracts";
 import type { FixtureWorld } from "../qloo/ports";
 
-export const ScenarioIdSchema = z.enum(["nyc-evening", "valid-only", "wrong-city-repair", "unresolved-only", "missing-evidence", "repair-fails"]);
+export const ScenarioIdSchema = z.enum(["nyc-evening", "valid-only", "wrong-city-repair", "unresolved-only", "missing-evidence", "repair-fails", "valid-pool-priority"]);
 export type ScenarioId = z.infer<typeof ScenarioIdSchema>;
 export const scenarioLabels: Record<ScenarioId, string> = {
   "nyc-evening": "NYC evening: mixed evidence",
@@ -11,6 +11,7 @@ export const scenarioLabels: Record<ScenarioId, string> = {
   "unresolved-only": "Unresolved venue",
   "missing-evidence": "No taste evidence",
   "repair-fails": "Replacement also violates the city constraint",
+  "valid-pool-priority": "Two valid choices: cultural priority (synthetic)",
 };
 const input: AuditInput = {
   schema_revision: "tastegate.input.v0",
@@ -46,7 +47,12 @@ const world: FixtureWorld = {
 export function getScenario(id: ScenarioId): { input: AuditInput; world: FixtureWorld } {
   const result = { input: structuredClone(input), world: structuredClone(world) };
   result.world.fixtureId = `authored-${id}-v1a`;
-  if (id === "valid-only" || id === "missing-evidence") {
+  if (id === "valid-pool-priority") {
+    const second = result.world.entities.find((e) => e.id === "synthetic:place-4")!;
+    result.input.recommendations = [{ ...result.input.recommendations[0]!, claims: [] },
+      { id: "original-2", name: second.name, address_hint: "Synthetic NYC hint", claims: [] }];
+    result.world.discoveries = [];
+  } else if (id === "valid-only" || id === "missing-evidence") {
     result.input.recommendations = [{ ...result.input.recommendations[0]!, claims: [] }];
     result.world.discoveries = [];
     if (id === "missing-evidence") result.world.rankOrder = [];

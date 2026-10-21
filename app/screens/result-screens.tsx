@@ -11,6 +11,7 @@ import {
 } from "../view-model";
 import type { RunProblem } from "../run-errors";
 import { DecisionTrace } from "../trace-view";
+import { CulturalComparisonView } from "../cultural-comparison-view";
 import { Nav, ProblemAlert, ScreenHeading } from "./shared";
 
 type Common = { report: AnyAuditReport; headingRef: Ref<HTMLHeadingElement>; problem: RunProblem | null; go: (screen: Screen) => void };
@@ -91,6 +92,8 @@ export function RepairScreen({ report, headingRef, problem, go, busy, onSubmit }
         onSubmit={onSubmit} />}
     </>}
     <p className="muted small">{stats.repairsProposed} replacement{stats.repairsProposed === 1 ? "" : "s"} proposed · {stats.repairVerified} verified · {stats.repairRejected} rejected · {stats.repairUnavailable} unavailable · {stats.evidenceInsufficient} with insufficient evidence · {stats.repairUnknown} unknown. One repair round at most.</p>
+    <CulturalComparisonView report={report} />
+    <Ledger report={report} />
     <Nav><button type="button" className="secondary" onClick={() => go(3)}>Back: Audit</button><button type="button" className="primary" onClick={() => go(5)}>Next: Compare</button></Nav>
   </section>;
 }
@@ -115,6 +118,7 @@ export function CompareScreen({ report, headingRef, problem, go, onRestart }: Co
     <Summary report={report} />
     <dl className="tiles" aria-label="What changed">{tiles.map((t) => <div key={t.label} className="tile"><dt>{t.label}</dt><dd>{t.value}</dd><dd className="tile-note">{t.note}</dd></div>)}</dl>
     <Comparison report={report} />
+    <CulturalComparisonView report={report} />
     <DecisionTrace report={report} />
     <Limits report={report} />
     <Ledger report={report} />

@@ -1,5 +1,9 @@
 # P07: geography-filtered discovery for NYC — readiness and execution gate
 
+> **Phase 3D/4A, 2026-10-22.** Base `0d55ca5425de711b6d28dddf7034a52a62cc14bb`. P07 remains **NOT EXECUTED / AWAITING_EXACT_APPROVAL**. The offer is unexpired and will be freshly revalidated by current code before the owner sees its sentence; no stale sentence is copied into this document or the ZIP. Current official parameter documentation was re-fetched (HTTP 200); the place/locality conflict remains. Consent verification now also binds the receipt's literal URL, destination and registration/expiry/consumption times.
+
+`node scripts/inspect-p07.mjs` is a read-only local intake command: currently `NOT_EXECUTED`. It verifies known transport/consent/ledger records and cap before inspecting captured bytes. A test double is explicitly `TEST_DOUBLE_ONLY`. A captured live body remains `P07_OBSERVED_SCHEMA_REVIEW_REQUIRED`; the pre-registered classifier alone grants no provider-schema admission, recorded replay or verified repair.
+
 2026-10-21, Pacific/Auckland. **P07 status: PREPARED, AWAITING_OWNER_APPROVAL. NOT EXECUTED.** Phase 3C revalidated the existing, unexpired offer offline with the new read-only command below. It did not create a new offer, register consent, or modify any historical approval artifact. Baseline: main, origin/main and the remote main all at `9e7bff070adfd396df184205acbd56232dea14d2`; clean working tree at handover.
 
 `node scripts/qloo-probe-p07-admin.mjs --review-gate --proposal=598e608d-ba24-4dbb-96c5-5335493e6cce`
@@ -31,11 +35,7 @@ GET https://hackathon.api.qloo.com/v2/insights
 | Credential | ignored `.env.local`, read only by the local probe CLI; never printed or placed in a URL. After separate exact approval only, supply `QLOO_MODE=live` to the execution child process and discard it on exit. The loader gives inherited process settings precedence. Do not edit `.env.local` or persist live mode. Environment readiness is a precondition, never approval. |
 | Does not authorize | a second P07, repeats of earlier probes, P08–P10, extra or altered parameters, promoting any entity, product live mode, commit/push/deploy/Devpost |
 
-**The exact P07-only approval sentence** (the only text that approves this gate; anything else, including a bare "yes" or "approve P07", is refused):
-
-```
-APPROVE P07-NYC-DISCOVERY 598e608d-ba24-4dbb-96c5-5335493e6cce SHA256:77fb0c94fc03df6b21de4a4b58e917b9
-```
+**Current approval sentence:** generated only by the local `--review-gate` command for the unexpired offer, or `--prepare-gate` after expiry. It is displayed to the owner at the current authorization gate; approval tokens are deliberately excluded from source and the Review ZIP. A bare yes or approximate phrase is refused.
 
 It binds the request hash, the identity-review hash, the limits, the destination, the deadline and this attempt ID into one digest. Changing any of them, or approving a different attempt, makes it invalid. Register it with:
 
@@ -119,4 +119,4 @@ Focused regression includes `p07-preparation`, `p07-interpretation`, `capture-re
 | | |
 | --- | --- |
 | P07 | PREPARED / AWAITING_OWNER_APPROVAL |
-| Next action | Independent review first. Then the owner may approve the exact sentence above. Only after approval: register, run one execution child with process-scoped live mode, and stop after the single bounded request. No retry, altered query, follow-up or P08. Nothing happens without approval. |
+| Next action | Independent review first. Then the owner may approve the current locally generated sentence. Only after approval: register and run one execution child with process-scoped live mode. The Phase 3D/4A brief permits subsequent offline inspection, observed-schema integration and revalidation; it permits no second request, retry, altered query or P08. |

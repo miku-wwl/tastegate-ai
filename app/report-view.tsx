@@ -207,10 +207,10 @@ export function Signals({ report }: { report: ProviderAuditReport }) {
 }
 
 export function Ledger({ report }: { report: AnyAuditReport }) {
-  return <details className="ledger"><summary>Evidence ledger — {report.evidence.length} records, run {report.run_id.slice(0, 8)}</summary>
+  return <details className="ledger" id="evidence-ledger"><summary>Evidence ledger — {report.evidence.length} records, run {report.run_id.slice(0, 8)}</summary>
     <table><thead><tr><th>#</th><th>Stage operation</th><th>Source</th><th>Details</th></tr></thead>
       <tbody>{report.evidence.map((e, i) => { const src = evidenceSource(report, e.evidence_id);
-        return <tr key={e.evidence_id}><td>{i}</td><td>{e.operation}{e.snapshot.kind === "unavailable" ? ` (${e.snapshot.request.operation})` : ""}</td>
+        return <tr key={e.evidence_id} id={"evidence-" + e.evidence_id} tabIndex={-1}><td>{i}</td><td>{e.operation}{e.snapshot.kind === "unavailable" ? ` (${e.snapshot.request.operation})` : ""}</td>
           <td><span className={`badge tone-${src.tone}`}>{src.label}</span></td><td className="small">{src.detail}</td></tr>; })}</tbody></table>
   </details>;
 }

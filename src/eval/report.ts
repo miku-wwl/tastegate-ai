@@ -1,5 +1,6 @@
 import { summarizeAblation, type EvidenceKind } from "./ablation-summary";
 import { summarizeCandidatePriority } from "./candidate-priority";
+import { summarizeRunEvidence } from "./run-metrics";
 import { aggregate, pairedSigns, runPaired, type PairedResult } from "./paired";
 import { POLICIES } from "./baselines";
 import { errorResult, scoreCase, summarize, type CaseResult, type EvalCase, type Stratum } from "./harness";
@@ -41,11 +42,21 @@ export function summarizePaired(paired: PairedRow[], strata: readonly Stratum[] 
       baseline_identity_errors: { AS_PROPOSED: sum("AS_PROPOSED", "identity_errors"), TOP_HIT_UNCHECKED: sum("TOP_HIT_UNCHECKED", "identity_errors") },
       baseline_unverifiable_shipped: { AS_PROPOSED: sum("AS_PROPOSED", "shipped_unverifiable"), TOP_HIT_UNCHECKED: sum("TOP_HIT_UNCHECKED", "shipped_unverifiable") },
       baseline_violating_shipped: { AS_PROPOSED: sum("AS_PROPOSED", "shipped_violating"), TOP_HIT_UNCHECKED: sum("TOP_HIT_UNCHECKED", "shipped_violating") } };
+    const ablation = summarizeAblation(scored, EVIDENCE_KIND[stratum]), priority = summarizeCandidatePriority(scored);
     return [stratum, { status: "RUN", plans: rows.length, scored_plans: scored.length, paused_for_human_decision: paused, paused_plans: pausedPlans, policies,
       paired_signs: { vs_AS_PROPOSED: signs("AS_PROPOSED"), vs_TOP_HIT_UNCHECKED: signs("TOP_HIT_UNCHECKED") },
       // What does Qloo's cultural evidence add? The same gate with and without it, scored by the same independent oracle.
-      cultural_evidence_ablation: summarizeAblation(scored, EVIDENCE_KIND[stratum]),
-      valid_candidate_priority: summarizeCandidatePriority(scored),
+      cultural_evidence_ablation: ablation,
+      valid_candidate_priority: priority,
+      evidence_completeness: summarizeRunEvidence(scored),
+      cultural_decision_outcomes: {
+        EVIDENCE_COVERAGE_GAIN: ablation.EVIDENCE_COVERAGE_GAIN,
+        CANDIDATE_ORDER_DIFFERENCE: priority,
+        VALID_REPAIR_GAIN: { treatment: ablation.VALID_REPAIRS.accepted_and_valid_by_oracle.treatment,
+          control: ablation.VALID_REPAIRS.accepted_and_valid_by_oracle.control,
+          note: "Same pool and hard facts; independently scored for fact validity, not cultural fit." },
+        INDEPENDENT_QUALITY_GAIN: { status: "NOT_ESTABLISHED", reason: "No cultural-fit labels independent of Qloo affinity." },
+      },
       gate: { final_status_counts: finals, final_items: finalItems, final_items_with_taste_evidence: withEvidence,
         taste_evidence_coverage: finalItems ? Math.round((withEvidence / finalItems) * 1000) / 1000 : "N/A" } }];
   }));

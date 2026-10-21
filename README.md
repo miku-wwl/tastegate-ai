@@ -67,7 +67,7 @@ Node 22.12+, 24 or 26+ (validated with Node 26.5.0).
 ```powershell
 npm run typecheck
 npm test                         # unit, workflow, service, UI-model, evaluation and deployment-artifact tests
-npm run eval                     # paired evaluation + ablation -> .artifacts/phase2b-evaluation.{json,md}
+npm run eval                     # immutable run directory -> .artifacts/evaluation/; latest pointer in evaluation-latest.json
 npm run browser:install          # once
 npm run test:e2e                 # real Chromium against the production build
 npm run build:standalone         # self-contained production server

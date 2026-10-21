@@ -1,0 +1,26 @@
+{
+  "schema": "tastegate.independent-venue-facts.v1",
+  "reviewed_local_date": "2026-10-22",
+  "selection": "All two original input slots of the pre-existing recorded NYC scenario, selected before inspecting outcomes. One plan, not an independent benchmark.",
+  "scope": "Official non-Qloo location facts only; no provider-ID mapping, cultural-fit label, opening-hour or availability claim.",
+  "cases": [
+    {
+      "slot_id": "original-1",
+      "input_name": "Blue Note New York",
+      "city": "New York",
+      "country": null,
+      "address": "131 W. 3rd St, New York, NY 10012",
+      "source_url": "https://www.bluenotejazz.com/nyc/",
+      "source_basis": "Official venue page and location footer. Country not explicitly stated in the reviewed text; left unlabelled."
+    },
+    {
+      "slot_id": "original-2",
+      "input_name": "Village Vanguard",
+      "city": "New York",
+      "country": "US",
+      "address": "178 7th Avenue South, New York, NY 10014, United States",
+      "source_url": "https://villagevanguard.com/",
+      "source_basis": "Official venue page and full postal address, including United States."
+    }
+  ]
+}

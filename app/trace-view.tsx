@@ -3,6 +3,7 @@
 import type { AnyAuditReport, Repair } from "../src/domain/contracts";
 import { assessRepair, type ChecklistState } from "../src/audit/assessment";
 import { TRACE_NOTE, decisionTrace, type TraceAction, type TraceCondition } from "./decision-trace";
+import { EvidenceLinks } from "./evidence-links";
 
 const CONDITION: Record<TraceCondition, string> = {
   IDENTITY_AMBIGUOUS: "Several candidates, identity not chosen", IDENTITY_UNRESOLVED: "No identity could be established", HARD_CONSTRAINT_FAILED: "A hard constraint failed",
@@ -31,12 +32,12 @@ export function DecisionTrace({ report }: { report: AnyAuditReport }) {
     <p className="muted small">{TRACE_NOTE}</p>
     <div className="table-wrap"><table className="results-table">
       <caption className="sr-only">The decisions TasteGate made for each recommendation</caption>
-      <thead><tr><th scope="col">Recommendation</th><th scope="col">What was found</th><th scope="col">What TasteGate did</th></tr></thead>
+      <thead><tr><th scope="col">Recommendation</th><th scope="col">What was found</th><th scope="col">What TasteGate did</th><th scope="col">Supporting evidence</th></tr></thead>
       <tbody>{steps.map((s) => {
         const action = ACTION[s.action];
         return <tr key={`${s.slot}-${s.phase}`}><th scope="row">{s.name}<span className="muted small"> · {s.phase === "AUDIT" ? "audit" : "repair"}</span></th>
           <td>{CONDITION[s.condition]}<br /><code>{s.condition}</code></td>
-          <td><span className={`pill tone-${action.tone}`}>{action.label}</span><br /><code>{s.action}</code></td></tr>;
+          <td><span className={`pill tone-${action.tone}`}>{action.label}</span><br /><code>{s.action}</code></td><td><EvidenceLinks report={report} refs={s.evidence_refs} /></td></tr>;
       })}</tbody>
     </table></div>
     {report.source_mode === "fixture" && <p className="small muted">SYNTHETIC: authored data. A success here demonstrates the rules; it is not evidence about real recommendations.</p>}

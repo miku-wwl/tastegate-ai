@@ -1,6 +1,7 @@
 import type { AnyAuditReport, AuditInput, Entity } from "../domain/contracts";
 import { culturalFootprint, rulesAndIdentityOnly } from "./ablation";
 import { compareCandidatePriority, type CandidatePriority } from "./candidate-priority";
+import { runEvidenceMetrics } from "./run-metrics";
 import { gateOutcome, keptByGate, runAsProposed, runTopHitUnchecked, POLICIES, type PolicyId, type PolicyOutcome } from "./baselines";
 import type { Built } from "./harness";
 import { classifyEntity, planLimit } from "./oracle";
@@ -40,7 +41,7 @@ export type AblationRow = {
   differing: { same_shipped_set: boolean; only_treatment: number; only_control: number };
   calls: { with_cultural_evidence: number; without: number };
 };
-export type PairedResult = { id: string; scores: Record<PolicyId, PolicyScore>; gate: GateFacts; ablation: AblationRow; priority?: CandidatePriority };
+export type PairedResult = { id: string; scores: Record<PolicyId, PolicyScore>; gate: GateFacts; ablation: AblationRow; priority?: CandidatePriority; evidence_metrics?: ReturnType<typeof runEvidenceMetrics> };
 
 // Runs both baselines on one built case, next to the gate's report for the same plan. A baseline that throws is recorded
 // as shipping nothing rather than hiding the case.
@@ -64,7 +65,7 @@ export async function runPaired(id: string, built: Built, report: AnyAuditReport
   const finalOriginals = report.original_audits.filter((a) => keptByGate(report, a));
   const gateFacts: GateFacts = { final_status: report.final_status, stop_reason: report.stop_reason, final_items: gate.shipped.length,
     final_with_taste_evidence: finalOriginals.filter((a) => a.cultural_relevance !== null).length + report.repairs.filter((r) => r.accepted && r.revalidation.cultural_relevance !== null).length };
-  return { id, gate: gateFacts, ablation, priority: compareCandidatePriority(report),
+  return { id, gate: gateFacts, ablation, priority: compareCandidatePriority(report), evidence_metrics: runEvidenceMetrics(report),
     scores: Object.fromEntries(POLICIES.map((p) => [p, scorePolicy(outcomes[p], built.input, built.intended, built.truthOf)])) as Record<PolicyId, PolicyScore> };
 }
 

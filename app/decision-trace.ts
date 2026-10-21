@@ -11,7 +11,7 @@ export const ACTIONS = ["HUMAN_CONFIRMATION_REQUIRED", "HOLD_UNKNOWN", "REPAIR_C
   "REPAIR_VERIFIED", "REPAIR_UNAVAILABLE", "EVIDENCE_INSUFFICIENT", "STOPPED_UNKNOWN"] as const;
 export type TraceCondition = typeof CONDITIONS[number];
 export type TraceAction = typeof ACTIONS[number];
-export type TraceStep = { slot: string; name: string; phase: "AUDIT" | "REPAIR"; condition: TraceCondition; action: TraceAction; evidence: string[]; synthetic: boolean };
+export type TraceStep = { slot: string; name: string; phase: "AUDIT" | "REPAIR"; condition: TraceCondition; action: TraceAction; evidence: string[]; evidence_refs: string[]; synthetic: boolean };
 
 // The first failing hard check of an audit, by what it checks.
 const failedCodes = (a: CandidateAudit) => a.findings.filter((f) => f.category === "hard_constraint" && f.state === "fail").map((f) => f.code);
@@ -50,12 +50,14 @@ export function decisionTrace(r: AnyAuditReport): TraceStep[] {
   const name = (slot: string) => r.input.recommendations.find((x) => x.id === slot)?.name ?? slot;
   const synthetic = r.source_mode === "fixture";
   const steps: TraceStep[] = [];
+  const refs = (audit: CandidateAudit) => [...new Set(audit.findings.flatMap((f) => f.evidence_refs))]
+    .filter((ref) => r.evidence.some((e) => e.evidence_id === ref));
   for (const audit of r.original_audits) {
     const { condition, action } = auditStep(audit);
-    steps.push({ slot: audit.candidate_id, name: name(audit.candidate_id), phase: "AUDIT", condition, action, evidence: [...new Set(audit.findings.filter((f) => f.state === "fail" || f.state === "unknown").map((f) => f.code))].slice(0, 4), synthetic });
+    steps.push({ slot: audit.candidate_id, name: name(audit.candidate_id), phase: "AUDIT", condition, action, evidence: [...new Set(audit.findings.filter((f) => f.state === "fail" || f.state === "unknown").map((f) => f.code))].slice(0, 4), evidence_refs: refs(audit), synthetic });
     for (const outcome of r.repair_outcomes.filter((o) => o.replaces === audit.candidate_id)) {
       const step = repairStep(r, outcome); const repair = r.repairs.find((x) => x.replaces === outcome.replaces);
-      steps.push({ slot: audit.candidate_id, name: name(audit.candidate_id), phase: "REPAIR", ...step, synthetic,
+      steps.push({ slot: audit.candidate_id, name: name(audit.candidate_id), phase: "REPAIR", ...step, synthetic, evidence_refs: repair ? [...new Set([...refs(repair.revalidation), ...repair.discovery_evidence_refs, repair.lookup_evidence_ref])].filter((ref) => r.evidence.some((e) => e.evidence_id === ref)) : [],
         evidence: repair ? [...new Set(repair.revalidation.findings.filter((f) => f.state === "fail" || f.code === "IDENTITY_USER_CONFIRMED" || f.code === "IDENTITY_OFFICIAL_REFERENCE").map((f) => f.code))].slice(0, 4) : [outcome.reason] });
     }
   }

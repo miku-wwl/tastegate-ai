@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { CONSENT_REVISION, canonicalApproval, termsDigest, type ConsentTerms } from "./owner-consent";
 import type { P05SignalBinding } from "./p05-signal";
-import { P07_PROFILE, p07RequestSha256, type P07Checkpoint } from "./p07-profile";
+import { P07_PROFILE, p07RequestSha256, p07RequestUrl, type P07Checkpoint } from "./p07-profile";
 
 // The terms of the single P07 request and the records that prove the owner approved exactly those terms. Everything here is
 // local: no HTTP, no credential. The admin module (p07-approval.ts) writes the records; the runner side only VERIFIES them, so
@@ -73,11 +73,17 @@ export async function verifyP07Consent(projectRoot: string, checkpoint: P07Check
     const proposalBytes = await readPrivateSmall(root, [...base, P07_PROPOSAL_DIR, `${checkpoint.attempt_id}.json`], 4096); if (!proposalBytes) return false;
     const proposal = P07ProposalSchema.parse(decodeJson(proposalBytes));
     const consumedBytes = await readPrivateSmall(root, [...base, P07_PROPOSAL_DIR, `${checkpoint.attempt_id}.consumed.json`], 4096); if (!consumedBytes) return false;
-    if (P07ConsumedSchema.parse(decodeJson(consumedBytes)).attempt_id !== checkpoint.attempt_id) return false;
+    const consumed = P07ConsumedSchema.parse(decodeJson(consumedBytes));
+    if (consumed.attempt_id !== checkpoint.attempt_id || consumed.consumed_utc !== checkpoint.approved_at) return false;
     if (await readPrivateSmall(root, [...base, P07_PROPOSAL_DIR, `${checkpoint.attempt_id}.withdrawn.json`], 4096)) return false;
     const requestSha = p07RequestSha256(binding.entityId);
     const digest = p07Digest(proposal);
-    return proposal.attempt_id === checkpoint.attempt_id && receipt.attempt_id === checkpoint.attempt_id && receipt.proposal_id === checkpoint.attempt_id &&
+    return receipt.request.url === p07RequestUrl(binding.entityId) &&
+      receipt.destination === "private/qloo-probes/p07/attempts/" + checkpoint.attempt_id + "/" &&
+      receipt.local_registration_utc === checkpoint.approved_at && receipt.approval_expires_at === checkpoint.approval_expires_at &&
+      Date.parse(receipt.approval_expires_at) - Date.parse(receipt.local_registration_utc) === P07_EXECUTION_WINDOW_MINUTES * 60000 &&
+      Date.parse(proposal.approve_before) - Date.parse(proposal.created_at) === P07_OFFER_WINDOW_HOURS * 3600000 &&
+      proposal.attempt_id === checkpoint.attempt_id && receipt.attempt_id === checkpoint.attempt_id && receipt.proposal_id === checkpoint.attempt_id &&
       checkpoint.consent_proposal_id === checkpoint.attempt_id && proposal.terms_sha256 === digest && receipt.terms_sha256 === digest && checkpoint.consent_terms_sha256 === digest &&
       proposal.request_sha256 === requestSha && receipt.request_sha256 === requestSha && checkpoint.request_sha256 === requestSha &&
       proposal.signal_review_sha256 === binding.reviewSha256 && proposal.p01_raw_sha256 === binding.p01RawSha256 &&

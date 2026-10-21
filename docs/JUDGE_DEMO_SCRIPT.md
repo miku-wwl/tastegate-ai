@@ -1,5 +1,7 @@
 # Judge demo script (2–3 minutes)
 
+> Current Phase 3D/4A scene order and evidence boundaries: [FINAL_JUDGE_DEMO](FINAL_JUDGE_DEMO.md). This earlier script is preserved as historical preparation; no video was recorded.
+
 2026-10-21, Pacific/Auckland. A script, **not a recording: no video was made.** It uses only the authored synthetic sample and the public results page, so every screen in it is safe to show publicly. Nothing here shows or describes provider data beyond what the repository already states.
 
 **Before you start:** `npm run build && npm start`, open <http://127.0.0.1:3000>. No key, no account, no network request to Qloo. Browser at about 1280 px wide.

@@ -1,5 +1,9 @@
 # Devpost submission draft: TasteGate AI
 
+> **Phase 3D/4A review update, 2026-10-22. DRAFT, NOT SUBMITTED.** Use the [final judge storyboard](FINAL_JUDGE_DEMO.md) and [current execution evidence](PHASE3D4A_EXECUTION_REPORT.md). The current product exposes source-linked cultural comparison and a separate synthetic valid-pool example. Real P07 repair and independent cultural uplift remain unestablished; the new official-source check establishes limited original-input location consistency only. Deadline and functional-demo/public-source requirements were re-read from [official rules](https://qloo.devpost.com/rules). Demo URL remains **PENDING_OWNER_HOSTING**.
+
+**Why Qloo matters (current draft).** Rules can reject a wrong city, but they cannot generate a cross-domain taste ordering. Qloo supplies reviewed identity candidates, discovery and query-relative cultural ordering; TasteGate keeps those separate from identity, geography and repair acceptance. On the current real shortlist, only one candidate is eligible after hard checks, so it cannot demonstrate cultural choice between two valid real venues. Our synthetic comparison demonstrates the mechanism and publishes its null retention and unproven quality result.
+
 2026-10-21, Pacific/Auckland. **DRAFT. Nothing submitted or opened for editing.** Updated in Phase 3C on base `9e7bff0` for owner review. The completed Phase 3B architecture is retained.
 
 ## 0. Official rules: verification status

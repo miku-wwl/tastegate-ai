@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 // The judge path in real Chromium against the production build: understand it in 30 seconds, walk the 2-minute guided demo, see the
 // two repair questions and the decision trace, then the paired evaluation with its honest null result. Only the authored synthetic
 // scenario is used, so nothing here depends on, or can show, any private or provider data.
-const PUBLIC_SHOTS = ".artifacts/screens";
+const PUBLIC_SHOTS = process.env.TASTEGATE_PUBLIC_SCREENSHOT_DIR ?? ".artifacts/screens";
 function guard(page: Page) {
   const external: string[] = []; const errors: string[] = [];
   void page.route("**/*", async (route) => { const url = new URL(route.request().url()); if (url.hostname !== "127.0.0.1") { external.push(url.origin); await route.abort(); } else await route.continue(); });
@@ -93,4 +93,27 @@ test("a phone-width screen has no horizontal scroll through the guided demo", as
   await expect(page.getByTestId("decision-trace")).toBeVisible();
   // The wide trace table scrolls inside its own container, never the page.
   expect(await overflows(page)).toBe(false); expect(g.external).toEqual([]); expect(g.errors).toEqual([]);
+});
+
+test("two valid synthetic choices expose priority separately from retention and link decisions to real ledger records", async ({ page }) => {
+  const g = guard(page); await page.goto("/");
+  await page.getByRole("button", { name: "Compare two valid choices" }).click();
+  await expect(page.getByRole("heading", { name: "Before and after" })).toBeFocused();
+  const panel = page.getByTestId("cultural-comparison");
+  await expect(panel).toContainText("SYNTHETIC");
+  await expect(panel).toContainText("Priority changes within one reviewed query.");
+  await expect(panel).toContainText("The retained set is unchanged.");
+  await expect(panel).toContainText("Independent quality gain: NOT ESTABLISHED.");
+  await panel.getByText("Candidate evidence and eligibility (2 assessed)", { exact: true }).click();
+  await expect(panel.getByRole("table")).toBeVisible();
+  const trace = page.getByTestId("decision-trace");
+  const first = trace.getByRole("link", { name: /Open evidence record/ }).first();
+  const target = await first.getAttribute("href"); await first.click();
+  await expect(page.locator("#evidence-ledger")).toHaveAttribute("open", "");
+  expect(await page.evaluate((id) => !!document.getElementById(id!), target!.slice(1))).toBe(true);
+  expect(await overflows(page)).toBe(false);
+  await shot(page, "phase3d4a-priority");
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await overflows(page)).toBe(false);
+  await shot(page, "phase3d4a-priority-mobile");
+  expect(g.external).toEqual([]); expect(g.errors).toEqual([]);
 });
