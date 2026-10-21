@@ -7,7 +7,7 @@ const place = (n: number, geocode: Geo = { city: "New York", country_code: "US",
   entity_id: `authored-place-${n}`, name: `Authored Place ${n}`, type: "urn:entity", subtype: "urn:entity:place",
   ...(geocode === null ? {} : { properties: { geocode } }), query: { affinity: 0.5 + n / 100 }, ...extra });
 const body = (entities: unknown[], extra: Record<string, unknown> = {}) => ({ success: true, results: { entities, duration: 12 }, ...extra });
-const withMarker = (name: unknown = "New York") => ({ query: { locality: { signal: { entity_id: "authored-locality", name } } } });
+const withMarker = (name: unknown = "New York City") => ({ query: { locality: { signal: { entity_id: "authored-locality", name } } } });
 const unnamedMarker = { query: { locality: { signal: { entity_id: "authored-locality" } } } };
 
 describe("P07 response interpretation: judged by content, never by the request", () => {
@@ -16,11 +16,20 @@ describe("P07 response interpretation: judged by content, never by the request",
     expect(r).toMatchObject({ class: "A_HONORED_NYC", returned: 3, counts: { in_nyc: 3, outside_nyc: 0, geography_missing: 0 }, locality_marker: { status: "PRESENT", path: "ROOT", matched_name_mentions_new_york: true } });
     expect(r.reason).toMatch(/does not validate any place/);
   });
-  it("A also accepts borough names as New York City, and a marker whose name is not stated", () => {
+  it("A accepts borough geography only with an explicit NYC marker; an unnamed marker is B", () => {
     const boroughs = ["Brooklyn", "Queens", "The Bronx", "Staten Island", "Manhattan"].map((city, i) => place(i + 1, { city, country_code: "US" }));
     expect(interpretNycDiscovery(body(boroughs.slice(0, 3), withMarker())).class).toBe("A_HONORED_NYC");
     const r = interpretNycDiscovery(body([place(1)], unnamedMarker));
-    expect(r).toMatchObject({ class: "A_HONORED_NYC", locality_marker: { status: "PRESENT", matched_name_mentions_new_york: "UNKNOWN" } });
+    expect(r).toMatchObject({ class: "B_PARTIAL_OR_MIXED", locality_marker: { status: "PRESENT", matched_name_mentions_new_york: "UNKNOWN", resolution: "UNKNOWN" } });
+  });
+  it.each([undefined, null, "", "   ", 7, {}, "Unknown", "New York", "New York State", "New York Mills", "Not New York City", "York, New York"])("B: %j cannot establish the intended locality", (name) => {
+    const r = interpretNycDiscovery(body([place(1)], { query: { locality: { signal: { name } } } }));
+    expect(r.class).toBe("B_PARTIAL_OR_MIXED");
+    expect(r.evidence).toMatchObject({ reported_geography: "CONSISTENT_WITH_NYC", venue_location_validation: "NOT_PERFORMED", independent_venue_identity: "NOT_PERFORMED" });
+  });
+  it("conflicting root/nested markers cannot confirm the requested locality", () => {
+    const input = { ...body([place(1)], withMarker()), results: { entities: [place(1)], ...withMarker("Elsewhere") } };
+    expect(interpretNycDiscovery(input)).toMatchObject({ class: "B_PARTIAL_OR_MIXED", locality_marker: { resolution: "CONFLICTING" } });
   });
   it("C: places without a locality marker mean the filter is treated as NOT applied, even if every place is in New York", () => {
     const r = interpretNycDiscovery(body([place(1), place(2)]));

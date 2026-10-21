@@ -1,5 +1,7 @@
 # Evaluation results
 
+> **Phase 3C (2026-10-21, base `9e7bff0`).** Fresh offline evaluation preserves the holdout and its null retained-set result. A secondary same-pool prioritization comparison now finds 6 ordering changes among 50 scored synthetic holdout plans (22 contain multiple valid candidates; 16 share one reviewed ranking query). This verifies authored comparison logic only. Real recorded evidence has no pair of hard-constraint-valid candidates to compare, and **no independently validated cultural uplift exists**. No fresh Qloo API request. [Method and exact gap](QLOO_INCREMENTAL_VALUE_FINAL.md), [actual verification](PHASE3C_EXECUTION_REPORT.md).
+
 2026-10-20, Pacific/Auckland. Commit `6b446784d` plus uncommitted changes. Reproduce with `npm run eval` (about 1 s; no network; writes `.artifacts/phase2b-evaluation.{json,md}`). `EVAL_PUBLISH=1 npm run eval` refreshes the aggregate-only [`data/evaluation-results.json`](../data/evaluation-results.json) that the app serves at `/results`.
 
 **What this evaluation can and cannot say.** It shows that, on the same plan and the same evidence, TasteGate keeps hard-constraint violations and unproven items out of the plan far better than two simple baselines, at a price (more calls, and people asked to decide). It does **not** show that real agents fail this way, that users prefer the output, or anything about cultural relevance. The live stratum was not run.

@@ -1,7 +1,7 @@
 {
   "schema": "tastegate.evaluation-results.v1",
-  "generated_at_utc": "2026-10-20T13:08:22.133Z",
-  "base_commit": "8c4937011b9e2dcc40b289ccd24bcbad6d2b4a5b",
+  "generated_at_utc": "2026-10-21T00:28:54.250Z",
+  "base_commit": "9e7bff070adfd396df184205acbd56232dea14d2",
   "working_tree_dirty": true,
   "holdout_seed": 20261020,
   "caveat": "Development cases shaped the gate and are not a benchmark. The seeded holdout is synthetic: it shows constructed failure patterns are handled, not that real recommendations behave this way. No live Qloo request was made. Latency is local in-process time only.",
@@ -74,9 +74,9 @@
             "plans_over_limit": 1,
             "latency_ms": {
               "samples": 10,
-              "p50": 0.04,
-              "p95": 0.37,
-              "max": 0.37
+              "p50": 0.14,
+              "p95": 0.78,
+              "max": 0.78
             },
             "violating_removed_rate": 0,
             "valid_kept_rate": 1
@@ -97,9 +97,9 @@
             "plans_over_limit": 0,
             "latency_ms": {
               "samples": 10,
-              "p50": 1.04,
-              "p95": 13.39,
-              "max": 13.39
+              "p50": 2.68,
+              "p95": 31.6,
+              "max": 31.6
             },
             "violating_removed_rate": 1,
             "valid_kept_rate": 0.75
@@ -231,7 +231,7 @@
             "note": "Items the treatment leaves UNKNOWN beyond the control are those missing cultural evidence or an unresolved taste signal; they are kept, not guessed."
           },
           "runtime": {
-            "treatment_local_latency_ms_median": 1.04,
+            "treatment_local_latency_ms_median": 2.68,
             "control": "NOT_SEPARATELY_MEASURED",
             "note": "In-process time of the treatment's own run; the control is derived from the same run, so no separate time exists and none is invented."
           },
@@ -242,6 +242,16 @@
           },
           "quality_uplift": "QUALITY_UPLIFT_NOT_ESTABLISHED",
           "reading": "The cultural evidence in this stratum is authored, so nothing here is evidence about Qloo."
+        },
+        "valid_candidate_priority": {
+          "plans_checked": 10,
+          "plans_with_multiple_valid_candidates": 1,
+          "plans_with_common_reviewed_query": 1,
+          "plans_with_changed_priority": 1,
+          "plans_missing_common_query": 0,
+          "plans_with_ties": 0,
+          "quality_uplift": "QUALITY_UPLIFT_NOT_ESTABLISHED",
+          "note": "Same valid candidate pool and identity assumptions in both arms. Input order without cultural evidence; within-one-query ordering with it. Ranking differences establish no cultural quality gain."
         },
         "gate": {
           "final_status_counts": {
@@ -322,9 +332,9 @@
             "plans_over_limit": 2,
             "latency_ms": {
               "samples": 50,
-              "p50": 0.04,
-              "p95": 0.12,
-              "max": 0.15
+              "p50": 0.11,
+              "p95": 0.37,
+              "max": 0.46
             },
             "violating_removed_rate": 0,
             "valid_kept_rate": 1
@@ -345,9 +355,9 @@
             "plans_over_limit": 0,
             "latency_ms": {
               "samples": 50,
-              "p50": 0.56,
-              "p95": 1.02,
-              "max": 2.95
+              "p50": 1.44,
+              "p95": 3.93,
+              "max": 10.3
             },
             "violating_removed_rate": 1,
             "valid_kept_rate": 0.945
@@ -479,7 +489,7 @@
             "note": "Items the treatment leaves UNKNOWN beyond the control are those missing cultural evidence or an unresolved taste signal; they are kept, not guessed."
           },
           "runtime": {
-            "treatment_local_latency_ms_median": 0.56,
+            "treatment_local_latency_ms_median": 1.44,
             "control": "NOT_SEPARATELY_MEASURED",
             "note": "In-process time of the treatment's own run; the control is derived from the same run, so no separate time exists and none is invented."
           },
@@ -490,6 +500,16 @@
           },
           "quality_uplift": "QUALITY_UPLIFT_NOT_ESTABLISHED",
           "reading": "The cultural evidence in this stratum is authored, so nothing here is evidence about Qloo."
+        },
+        "valid_candidate_priority": {
+          "plans_checked": 50,
+          "plans_with_multiple_valid_candidates": 22,
+          "plans_with_common_reviewed_query": 16,
+          "plans_with_changed_priority": 6,
+          "plans_missing_common_query": 6,
+          "plans_with_ties": 0,
+          "quality_uplift": "QUALITY_UPLIFT_NOT_ESTABLISHED",
+          "note": "Same valid candidate pool and identity assumptions in both arms. Input order without cultural evidence; within-one-query ordering with it. Ranking differences establish no cultural quality gain."
         },
         "gate": {
           "final_status_counts": {

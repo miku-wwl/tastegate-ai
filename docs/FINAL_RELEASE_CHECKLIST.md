@@ -1,8 +1,8 @@
 # Final release checklist
 
-2026-10-21, Pacific/Auckland. Base commit `8c4937011` plus uncommitted Phase 3B changes. **Deadline (last known, UNVERIFIED today): 2026-10-30 23:45 EDT = 2026-10-31 16:45 NZDT.** Target: submit by **2026-10-30 12:00 EDT (2026-10-31 05:00 NZDT)**.
+2026-10-21, Pacific/Auckland. Phase 3C base `9e7bff070adfd396df184205acbd56232dea14d2` plus uncommitted changes. **Deadline re-read from [official rules](https://qloo.devpost.com/rules): 2026-10-30 23:45 EDT = 2026-10-31 16:45 NZDT.** Internal target: **2026-10-31 05:00 NZDT**.
 
-**Release state: NOT READY TO SUBMIT, by design.** Nothing is committed, deployed or submitted. The engineering is verified locally; the open items are owner decisions and owner-supplied resources. Status words used below: **DONE** (verified in Phase 3B), **PREPARED** (built and tested, not executed), **PENDING_OWNER** (only the owner can do or decide it), **UNVERIFIED** (could not be checked), **NOT_STARTED**.
+**Release state: NOT READY TO SUBMIT.** Phase 3C is uncommitted; nothing was pushed, deployed or submitted in this phase. Independent review and the owner's approvals/resources remain necessary. Current measured verification: [Phase 3C report](PHASE3C_EXECUTION_REPORT.md); Phase 3B counts below are historical unless explicitly refreshed.
 
 ## 1. Acceptance gates
 
@@ -13,7 +13,7 @@
 | 3 | **Product experience** | **PASS** (engineering-verified) | 30-second explainer, 2-minute guided demo, decision trace, repair assessment; 14 real-Chromium tests (including keyboard, mobile width and the guided flow), contrast tests. No human usability study. | A 3–5 person walkthrough |
 | 4 | **Honest evaluation** | **PASS** (method) | Fair control without cultural evidence, independent oracle, strata never pooled, `QUALITY_UPLIFT_NOT_ESTABLISHED` published; live stratum NOT RUN. | A human-judged taste study (out of scope) |
 | 5 | **Deployment security readiness** | **PASS** (locally verified) | Production profiles, health check, start script, Dockerfile, compose/nginx examples, privacy gate with canaries and self-test, container smoke test. | Re-run on the exact release commit |
-| 6 | **Submission content readiness** | **PARTIAL** | Devpost draft, judge demo script, README, organizer inquiry (unsent). The official rules could not be fetched (HTTP 403) and **every rule is UNVERIFIED**; no video; no hosted URL. | Owner ticks section 3; hosting decided; text pasted |
+| 6 | **Submission content readiness** | **PARTIAL** | Draft and demo script updated; rules now re-read. No functional demo URL, no independent review or organizer answer about recorded-data display. No video recorded. | Owner provides resources/decisions; functional demo; submission review |
 | 7 | **Public deployment** | **NOT_STARTED / OWNER_RESOURCE_PENDING** | No hosting resource exists. `PUBLIC_DEPLOYMENT_STATUS = NOT_DEPLOYED_OWNER_RESOURCE_PENDING`. | Owner supplies a host, domain and approval |
 
 ## 2. Actions that need the owner's separate, explicit approval
@@ -22,9 +22,9 @@ Each is independent; approving one never approves another. None has been taken.
 
 | Action | State | Notes |
 | --- | --- | --- |
-| **P07** (one geography-filtered Qloo request) | PREPARED, AWAITING_APPROVAL | Gate in [P07 readiness](P07_NYC_REPAIR_READINESS.md); exact sentence; offer lapses 2026-10-22T12:25:45Z. Setting `QLOO_MODE=live` in the ignored `.env.local` is a precondition, not an approval. |
+| **P07** (one geography-filtered Qloo request) | OFFLINE_REVALIDATED, AWAITING_APPROVAL | Existing unexpired [gate](P07_NYC_REPAIR_READINESS.md); lapses 2026-10-22T12:25:45.973Z. No checkpoint or request. After exact approval, use process-scoped live mode only. |
 | Any other Qloo request (P08+, live runs, repeats of P01–P06/P03-R) | NOT REQUESTED | Each needs its own exact gate |
-| **Commit** the Phase 3B change set | PENDING_OWNER | Re-run the privacy gate on the exact tree first |
+| **Commit** the Phase 3C change set | PENDING_OWNER | Independent review and explicit approval first |
 | **Push** | PENDING_OWNER | After commit approval |
 | Organizer inquiry email | DRAFTED, NOT SENT | [Devpost draft](DEVPOST_AWARD_SUBMISSION_DRAFT.md) section 15 |
 | Hosting purchase / cloud resources / DNS / certificate | NOT STARTED | [Deployment preparation](PUBLIC_DEPLOYMENT_PREPARATION.md) section 14 |
@@ -34,23 +34,19 @@ Each is independent; approving one never approves another. None has been taken.
 | Devpost edits / submission | NOT STARTED | |
 | Demo video | NOT RECORDED | Script ready: [judge demo script](JUDGE_DEMO_SCRIPT.md) |
 
-## 3. Official rules: tick each row in a browser (all UNVERIFIED)
+## 3. Official rules and remaining owner checks
 
-`qloo.devpost.com` and its `/rules` page returned HTTP 403 to the tool used here, so nothing below was re-read.
+The [official rules](https://qloo.devpost.com/rules) were readable in Phase 3C (2026-10-21), replacing the earlier failed-fetch state. Sections 1/4 require a functional demo link, public licensed source and English materials; section 6 gives four equal criteria. Judging ends November 16 (Eastern Time); access must remain free for judges. A video is not listed as mandatory. Eligibility remains the owner's responsibility; recorded-only sufficiency and public Qloo-data display still need organizer clarification.
 
-- [ ] Deadline and time zone (last known: 2026-10-30 23:45 EDT)
-- [ ] Is a **publicly reachable hosted demo** required, or are the repository and a video enough (Phase 0 reading: probably required)
-- [ ] Is a **demo video** required (Phase 0 reading: not mandatory)
-- [ ] Public repository and open-source license requirements (the repository is MIT; `LICENSE` exists)
-- [ ] What counts as a "substantive" Qloo integration, and whether replaying owner-collected responses with an opt-in live adapter qualifies
-- [ ] Rules on displaying or storing Qloo data (developer guide: private server-side caching is fine; no response data in a public repository; **silent on public display**)
-- [ ] AI-assistance and reuse disclosure wording (the Agentic Intent Gate Runtime is **not** integrated; the code was written with an AI assistant)
-- [ ] Eligibility, team size, required fields, file formats, judging criteria and weights
-- [ ] Whether the Qloo key stays active through judging (quota and rate limits are UNKNOWN)
+- [x] Re-read deadline, demo/source/language requirements and judging criteria.
+- [ ] Supply the functional demo URL and free judge access through judging.
+- [ ] Confirm eligibility, account-only required fields and reuse/AI disclosures.
+- [ ] Obtain organizer guidance on recorded integration and public display.
+- [ ] Confirm key expiry, quotas and rate limits for any proposed live session.
 
 ## 4. Before the commit (owner-approved only)
 
-- [ ] Independent review of the Phase 3B change set is complete.
+- [ ] Independent review of the Phase 3C change set is complete.
 - [ ] The owner explicitly approves committing. No commit message is prepared until then.
 - [ ] `git status` shows no `private/`, `.env*`, `.artifacts/`, `.cache/` or `test-results/` path (all are ignored; `.env.example` is the only tracked env file).
 - [ ] Full regression on the exact tree (section 6) passes; keep the logs.

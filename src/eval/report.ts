@@ -1,4 +1,5 @@
 import { summarizeAblation, type EvidenceKind } from "./ablation-summary";
+import { summarizeCandidatePriority } from "./candidate-priority";
 import { aggregate, pairedSigns, runPaired, type PairedResult } from "./paired";
 import { POLICIES } from "./baselines";
 import { errorResult, scoreCase, summarize, type CaseResult, type EvalCase, type Stratum } from "./harness";
@@ -44,6 +45,7 @@ export function summarizePaired(paired: PairedRow[], strata: readonly Stratum[] 
       paired_signs: { vs_AS_PROPOSED: signs("AS_PROPOSED"), vs_TOP_HIT_UNCHECKED: signs("TOP_HIT_UNCHECKED") },
       // What does Qloo's cultural evidence add? The same gate with and without it, scored by the same independent oracle.
       cultural_evidence_ablation: summarizeAblation(scored, EVIDENCE_KIND[stratum]),
+      valid_candidate_priority: summarizeCandidatePriority(scored),
       gate: { final_status_counts: finals, final_items: finalItems, final_items_with_taste_evidence: withEvidence,
         taste_evidence_coverage: finalItems ? Math.round((withEvidence / finalItems) * 1000) / 1000 : "N/A" } }];
   }));

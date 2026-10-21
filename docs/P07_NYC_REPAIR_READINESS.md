@@ -1,6 +1,10 @@
 # P07: geography-filtered discovery for NYC — readiness and execution gate
 
-2026-10-21, Pacific/Auckland. **P07 status: PREPARED, AWAITING_OWNER_APPROVAL. It has not been executed. No Qloo request was made in Phase 3B.** The gate below was prepared offline: it wrote one private proposal file and sent nothing. Workstream B (P0) of Phase 3B.
+2026-10-21, Pacific/Auckland. **P07 status: PREPARED, AWAITING_OWNER_APPROVAL. NOT EXECUTED.** Phase 3C revalidated the existing, unexpired offer offline with the new read-only command below. It did not create a new offer, register consent, or modify any historical approval artifact. Baseline: main, origin/main and the remote main all at `9e7bff070adfd396df184205acbd56232dea14d2`; clean working tree at handover.
+
+`node scripts/qloo-probe-p07-admin.mjs --review-gate --proposal=598e608d-ba24-4dbb-96c5-5335493e6cce`
+
+Result: `GATE_REVALIDATED_NO_REQUEST_SENT`. Private artist review, exact request hash, limits, expiry and settled prior ledgers revalidated; P07 ledger remains **0 reserved / 0 dispatched / 0 unresolved**. The owner previously chose **"Not now — independent review first."** That remains a refusal to execute; preparing or reviewing the offer grants no authority.
 
 ## 1. The gate
 
@@ -24,7 +28,7 @@ GET https://hackathon.api.qloo.com/v2/insights
 | Budget | 1 dispatch, 1 in flight, 0 retries, 0 redirects, 4 s timeout, 262,144 byte response cap |
 | Approval window | 5 minutes from the moment the approval is registered |
 | Private evidence destination | `private/qloo-probes/p07/attempts/598e608d-ba24-4dbb-96c5-5335493e6cce/` (immutable: `attempt.json`, `response.raw.json`, `summary.json`; ledger-fenced, never overwritten) |
-| Credential | ignored `.env.local`, read only by the local probe CLI; never printed or placed in a URL. **Precondition:** preflight currently reports `BLOCKED / LIVE_MODE_REQUIRED` because the local config is not in live mode; the owner must set `QLOO_MODE=live` there before execution (a precondition, not an approval) |
+| Credential | ignored `.env.local`, read only by the local probe CLI; never printed or placed in a URL. After separate exact approval only, supply `QLOO_MODE=live` to the execution child process and discard it on exit. The loader gives inherited process settings precedence. Do not edit `.env.local` or persist live mode. Environment readiness is a precondition, never approval. |
 | Does not authorize | a second P07, repeats of earlier probes, P08–P10, extra or altered parameters, promoting any entity, product live mode, commit/push/deploy/Devpost |
 
 **The exact P07-only approval sentence** (the only text that approves this gate; anything else, including a bare "yes" or "approve P07", is refused):
@@ -43,7 +47,7 @@ Withdraw it with `--withdraw --proposal=<id>` (this also revokes a registered ap
 
 ## 2. What the official documentation says, parameter by parameter
 
-Read on 2026-10-21 from the official Qloo pages. Nothing here is inferred from a response.
+Re-fetched on 2026-10-21 from the official [Insights reference](https://docs.qloo.com/reference/insights-api-deep-dive), [Parameter Reference](https://docs.qloo.com/reference/parameters), [Entity Type Parameter Guide](https://docs.qloo.com/reference/available-parameters-by-entity-type) and [developer guide](https://docs.qloo.com/reference/qloo-llm-hackathon-developer-guide). Browser-search retrieval failed; direct read-only HTTPS GETs to those documentation pages returned HTTP 200. These were documentation fetches, **not event API requests**. The conflict below persists. Nothing here is inferred from a P07 response.
 
 | Parameter | Insights reference | Parameter Reference | Entity Type Parameter Guide (`place`) | Verdict |
 | --- | --- | --- | --- | --- |
@@ -72,13 +76,13 @@ Also from the developer guide: "invalid parameters are silently ignored rather t
 
 | Class | Meaning | What it implies |
 | --- | --- | --- |
-| **A_HONORED_NYC** | A resolved-locality marker is present at `query.locality.signal`, its name (if given) mentions New York, and **every** returned place reports a US, New York City geography | The filter appears to have been applied. Still **no place is a verified replacement** until it passes the repair audit. |
-| **B_PARTIAL_OR_MIXED** | A marker is present but a place is outside the US or NYC, lacks geography, or the matched locality is not New York | Judge each place individually; do not credit the filter |
+| **A_HONORED_NYC** | A marker explicitly names `New York City` or `NYC` after case/Unicode/outer-whitespace normalization; all returned places report US/NYC geography; any second marker agrees | Reported geography and explicit locality resolution are consistent. Actual venue location and independently corroborated identity remain **NOT_PERFORMED**. No repair is verified. |
+| **B_PARTIAL_OR_MIXED** | Marker name missing, blank, unknown, ambiguous (`New York` could be the state), a substring match such as `New York Mills`, conflicting markers, mixed places or missing geography | Never credit unknown locality as confirmed. Judge each candidate independently. |
 | **C_PARAMETER_APPARENTLY_IGNORED** | Places but no marker | Treat the filter as not applied; each place stands only on its own geography |
 | **D_EMPTY** | A valid envelope with no places | Nothing to repair with; no evidence the filter was applied |
 | **E_UNUSABLE** | The shape does not match the reviewed one, an item has the wrong type, or more than `take` places returned | UNKNOWN; nothing is used |
 
-Boroughs (Manhattan, Brooklyn, Queens, the Bronx, Staten Island) count as New York City **for judging the filter only**. Qloo's `query.affinity` is not an input to any class.
+Boroughs (Manhattan, Brooklyn, Queens, the Bronx, Staten Island) count as New York City **for assessing reported geography only**. They do not establish the resolved locality or validate a venue. The output now separately states reported-geography consistency, resolved locality, actual venue-location validation and independent venue identity. Qloo's `query.affinity` is not an input to any class.
 
 ## 5. From a capture to a real `REPAIR_VERIFIED`
 
@@ -88,11 +92,17 @@ A real verified repair needs more than a good response. Phase 3B made the rule e
 2. For one candidate that passes every hard check, the owner reviews an **official public venue page** (not Qloo) and registers it as a reference for that identity: publisher, https URL, the venue name/city/country it supports, the review time and a hash of what was reviewed. The registry is private (it binds to a hash of the Qloo ID); the page's URL is public.
 3. The replacement then verifies (`identity_basis: official_public_reference`), or a contradicting page produces `FACT_CONFLICT` and a rejection.
 
-**Deliberately not built yet:** loading a sealed P07 capture into the recorded adapter and the private reference file loader. Both depend on the real response shape, which is unknown; coding them now would build against an assumption. The same applies to the two post-execution commands: a local **inspect** command that runs the classifier above on the saved body and prints counts only (the classifier is ready; its command-line wrapper is not), and a **seal** command in the `seal-recorded-probe.mjs` pattern (write the integrity manifest, prove the loader accepts it, roll back otherwise). They are written against the real capture after it exists, with no network access, and they are the "review and seal" steps that follow an approved execution. The pure pieces they will use (interpretation, strict repair gate, reference model and its validator rules, adapter hook) are built and tested. Until P07 is executed and sealed there is **no** real `REPAIR_VERIFIED`, and none is claimed.
+**Phase 3C offline implementation:** `capture-review.ts` inspects bounded UTF-8/JSON bytes through the existing reviewed projection, refuses an incompatible shape, and exclusively writes a private byte-integrity review seal after structural review. `verifyCaptureSeal` re-hashes every artifact and re-derives geography on subsequent use. This is an evidence seal, **not** the recorded adapter's replay seal or proof of dispatch/approval; it always says `REPLAY_NOT_ENABLED` and `NOT_VERIFIED`.
+
+`official-reference-store.ts` prepares the existing adapter's `references` option from a private registry: exact official URL, independently reviewed host allowlist, separately saved source text, capture/review times, content digest, full-line factual excerpts and a process-local identity binding. Missing source bytes, assertion-only records, unsupported facts, provider-domain sources, changed URLs and duplicate identities fail closed. A hash cannot authenticate a website: a trusted operator must inspect the original official page and capture provenance before admitting its host and entry. No real reference is registered or claimed verified.
+
+**After a separately approved capture:** inspect bytes -> human structural review -> assess geography -> seal and verify integrity -> candidate identity review -> obtain/capture and review the candidate's official source -> load its registry through the existing recorded-adapter hook -> existing repair revalidation and graph validator -> existing assessment and before/after report. Every accepted repair still needs every hard/evidence gate; NYC alone or an owner assertion is insufficient.
+
+**Deferred until observed:** exact P07 response-specific semantic parsing, request-context replay admission and integration into `VerifiedRecordings`, and a P07 CLI that promotes a review seal to the product's replay seal only after the actual loader accepts it. Generic inspection is not validation of unseen fields. Until then: no real `REPAIR_VERIFIED`.
 
 ## 6. Offline test coverage (no network; `fetch` and `https.request` are throwing doubles)
 
-`tests/p07-preparation.test.ts` (about 100 cases) and `tests/p07-interpretation.test.ts` (30):
+Focused regression includes `p07-preparation`, `p07-interpretation`, `capture-review` and `official-reference-store`; actual totals are in [the Phase 3C report](PHASE3C_EXECUTION_REPORT.md).
 
 - **Profile exactness**: every extra, changed or omitted parameter, origin, path, method or size is refused (unsupported-parameter denial).
 - **Wrong signal binding**: absent, copied, or minted-for-another-probe bindings never send.
@@ -109,4 +119,4 @@ A real verified repair needs more than a good response. Phase 3B made the rule e
 | | |
 | --- | --- |
 | P07 | PREPARED / AWAITING_OWNER_APPROVAL |
-| Next action | The owner decides: approve with the exact sentence (then set `QLOO_MODE=live` locally, register, execute once, review, seal), decline, or ask for another profile. Nothing happens without that. |
+| Next action | Independent review first. Then the owner may approve the exact sentence above. Only after approval: register, run one execution child with process-scoped live mode, and stop after the single bounded request. No retry, altered query, follow-up or P08. Nothing happens without approval. |

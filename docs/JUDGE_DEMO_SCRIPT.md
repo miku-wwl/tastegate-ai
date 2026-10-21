@@ -18,6 +18,8 @@
 
 ## If you only have 30 seconds
 
+Phase 3C results-page addition: point to **Can cultural evidence prioritize valid candidates?** Say: "On the same valid pool, authored evidence changes priority in six of fifty scored synthetic holdout plans. This changes no acceptance. Our real recorded shortlist has only one valid candidate, so we cannot yet demonstrate this with multiple real venues." The results page now has keyboard skip navigation and a verified phone-width layout.
+
 Show the **How it works** strip, press the guided demo, stop at the Repair screen's two pills and say: "Hard constraints and cultural evidence are separate questions; a high Qloo rank never overrides a failed hard check."
 
 ## What not to show

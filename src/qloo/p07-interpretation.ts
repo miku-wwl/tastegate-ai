@@ -8,13 +8,17 @@ import { ProjectionError, projectInsightsPlaces } from "./projections";
 //   D_EMPTY                     a valid envelope with no places: the filter may have excluded everything, or the parameter set was not understood
 //   C_PARAMETER_APPARENTLY_IGNORED  places returned but no resolved-locality marker: treat the locality filter as NOT applied
 //   B_PARTIAL_OR_MIXED          marker present, but a place is outside the US/NYC, lacks geography, or the matched locality is not New York
-//   A_HONORED_NYC               marker present, matched locality (if named) mentions New York, every place is in the US and in New York City
+//   A_HONORED_NYC               marker explicitly names New York City, every place reports a US/NYC geography
 export const P07_TAKE = 3;
 export type P07Class = "A_HONORED_NYC" | "B_PARTIAL_OR_MIXED" | "C_PARAMETER_APPARENTLY_IGNORED" | "D_EMPTY" | "E_UNUSABLE";
-export type LocalityMarker = { status: "PRESENT" | "ABSENT" | "MALFORMED"; path: "ROOT" | "RESULTS" | null; matched_name_mentions_new_york: boolean | "UNKNOWN" };
+export type LocalityMarker = { status: "PRESENT" | "ABSENT" | "MALFORMED"; path: "ROOT" | "RESULTS" | null;
+  matched_name_mentions_new_york: boolean | "UNKNOWN";
+  resolution: "NEW_YORK_CITY" | "OTHER_OR_AMBIGUOUS" | "UNKNOWN" | "CONFLICTING" };
 export type PlaceGeography = { index: number; country: "US" | "OTHER" | "MISSING"; city: "NEW_YORK" | "NYC_BOROUGH" | "OTHER_CITY" | "MISSING"; verdict: "IN_NYC" | "OUTSIDE_NYC" | "GEOGRAPHY_MISSING" };
 export type P07Interpretation = { class: P07Class; locality_marker: LocalityMarker; returned: number; geography: PlaceGeography[];
-  counts: { in_nyc: number; outside_nyc: number; geography_missing: number }; reason: string };
+  counts: { in_nyc: number; outside_nyc: number; geography_missing: number }; reason: string;
+  evidence: { reported_geography: "CONSISTENT_WITH_NYC" | "MIXED_OR_MISSING" | "NO_USABLE_PLACES";
+    resolved_locality: LocalityMarker["resolution"]; venue_location_validation: "NOT_PERFORMED"; independent_venue_identity: "NOT_PERFORMED" } };
 
 const norm = (value: string) => value.normalize("NFKC").trim().toLowerCase();
 // The five boroughs are New York City; geocode.city can carry the borough name. This is the filter-honoring test only: the audit's own
@@ -25,16 +29,28 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 function marker(body: unknown): LocalityMarker {
   const root = isRecord(body) ? body : {};
   const results = isRecord(root.results) ? root.results : {};
+  const markers: LocalityMarker[] = [];
   for (const [path, holder] of [["ROOT", root], ["RESULTS", results]] as const) {
     const query = holder.query; if (!isRecord(query) || !("locality" in query)) continue;
-    const locality = query.locality; if (!isRecord(locality) || !("signal" in locality)) return { status: "MALFORMED", path, matched_name_mentions_new_york: "UNKNOWN" };
-    const signal = locality.signal; if (!isRecord(signal)) return { status: "MALFORMED", path, matched_name_mentions_new_york: "UNKNOWN" };
-    return { status: "PRESENT", path, matched_name_mentions_new_york: typeof signal.name === "string" && signal.name.trim() ? norm(signal.name).includes("new york") : "UNKNOWN" };
+    const locality = query.locality;
+    const signal = isRecord(locality) ? locality.signal : null;
+    if (!isRecord(signal)) { markers.push({ status: "MALFORMED", path, matched_name_mentions_new_york: "UNKNOWN", resolution: "UNKNOWN" }); continue; }
+    const name = typeof signal.name === "string" ? norm(signal.name) : "";
+    // "New York" alone can name the state. Substrings such as "New York Mills" establish neither NYC nor its boundary.
+    // This conservative allowlist is about the reviewed marker only; no additional provider field is inferred.
+    const explicit = name === "new york city" || name === "nyc";
+    markers.push({ status: "PRESENT", path, matched_name_mentions_new_york: name ? explicit : "UNKNOWN",
+      resolution: !name ? "UNKNOWN" : explicit ? "NEW_YORK_CITY" : "OTHER_OR_AMBIGUOUS" });
   }
-  return { status: "ABSENT", path: null, matched_name_mentions_new_york: "UNKNOWN" };
+  const first = markers[0];
+  if (!first) return { status: "ABSENT", path: null, matched_name_mentions_new_york: "UNKNOWN", resolution: "UNKNOWN" };
+  if (markers.some((m) => m.status !== first.status || m.resolution !== first.resolution))
+    return { ...first, status: "PRESENT", matched_name_mentions_new_york: "UNKNOWN", resolution: "CONFLICTING" };
+  return first;
 }
 const unusable = (reason: string, locality_marker: LocalityMarker): P07Interpretation =>
-  ({ class: "E_UNUSABLE", locality_marker, returned: 0, geography: [], counts: { in_nyc: 0, outside_nyc: 0, geography_missing: 0 }, reason });
+  ({ class: "E_UNUSABLE", locality_marker, returned: 0, geography: [], counts: { in_nyc: 0, outside_nyc: 0, geography_missing: 0 }, reason,
+    evidence: { reported_geography: "NO_USABLE_PLACES", resolved_locality: locality_marker.resolution, venue_location_validation: "NOT_PERFORMED", independent_venue_identity: "NOT_PERFORMED" } });
 
 export function interpretNycDiscovery(body: unknown): P07Interpretation {
   const locality = marker(body);
@@ -49,10 +65,12 @@ export function interpretNycDiscovery(body: unknown): P07Interpretation {
   });
   const counts = { in_nyc: geography.filter((g) => g.verdict === "IN_NYC").length, outside_nyc: geography.filter((g) => g.verdict === "OUTSIDE_NYC").length,
     geography_missing: geography.filter((g) => g.verdict === "GEOGRAPHY_MISSING").length };
-  const result = (cls: P07Class, reason: string): P07Interpretation => ({ class: cls, locality_marker: locality, returned: places.length, geography, counts, reason });
+  const result = (cls: P07Class, reason: string): P07Interpretation => ({ class: cls, locality_marker: locality, returned: places.length, geography, counts, reason,
+    evidence: { reported_geography: !places.length ? "NO_USABLE_PLACES" : counts.in_nyc === places.length ? "CONSISTENT_WITH_NYC" : "MIXED_OR_MISSING",
+      resolved_locality: locality.resolution, venue_location_validation: "NOT_PERFORMED", independent_venue_identity: "NOT_PERFORMED" } });
   if (!places.length) return result("D_EMPTY", "A valid response with no places: nothing to repair with, and no evidence the locality was applied.");
   if (locality.status !== "PRESENT") return result("C_PARAMETER_APPARENTLY_IGNORED", "No resolved-locality marker: the locality filter is treated as not applied. Each place must be judged on its own geography.");
-  if (counts.outside_nyc || counts.geography_missing || locality.matched_name_mentions_new_york === false)
-    return result("B_PARTIAL_OR_MIXED", "A locality was resolved but the places or the matched locality do not all support New York City. Judge each place individually.");
-  return result("A_HONORED_NYC", "A locality marker is present and every returned place reports a US, New York City geography. This does not validate any place as a replacement.");
+  if (counts.outside_nyc || counts.geography_missing || locality.resolution !== "NEW_YORK_CITY")
+    return result("B_PARTIAL_OR_MIXED", "The marker does not establish the intended locality, or the reported places do not all support NYC. Consistent reported geography alone confirms neither locality resolution nor venue identity.");
+  return result("A_HONORED_NYC", "The marker explicitly names NYC and every returned place reports US/NYC geography. This does not validate any place as a replacement or independently corroborate its location or identity.");
 }

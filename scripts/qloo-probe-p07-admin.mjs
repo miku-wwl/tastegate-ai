@@ -2,6 +2,7 @@
 //   --status                                  where P07 stands (no gate / open / expired / withdrawn / approval registered / executed)
 //   --prepare-gate                            write the proposal for the one P07 request and print the gate, including the ONE sentence
 //                                             that approves it. Preparing a gate sends nothing and approves nothing.
+//   --review-gate --proposal=<id>             revalidate an existing offer offline; read-only, no renewal or approval
 //   --register-approval --proposal=<id> --owner-reply=<sentence>
 //                                             register the single-use approval. The reply must equal the printed sentence exactly;
 //                                             anything else (a refusal, a hedge, another probe) is refused and nothing is written.
@@ -22,10 +23,10 @@ const option = (name) => { const hit = args.filter((a) => a.startsWith(`--${name
 let target = null;
 try {
   const mode = args[0];
-  const shape = { "--status": 1, "--prepare-gate": 1, "--register-approval": 3, "--withdraw": 2 }[mode];
+  const shape = { "--status": 1, "--prepare-gate": 1, "--review-gate": 2, "--register-approval": 3, "--withdraw": 2 }[mode];
   if (shape === undefined || args.length !== shape) throw new Error("INVALID_ARGUMENTS");
   if (mode === "--register-approval" && (option("proposal") === null || option("owner-reply") === null)) throw new Error("INVALID_ARGUMENTS");
-  if (mode === "--withdraw" && option("proposal") === null) throw new Error("INVALID_ARGUMENTS");
+  if (["--withdraw", "--review-gate"].includes(mode) && option("proposal") === null) throw new Error("INVALID_ARGUMENTS");
   const cache = join(scriptRoot, ".cache/qloo-probe"); await mkdir(cache, { recursive: true });
   target = await mkdtemp(join(cache, "p07-admin-"));
   await writeFile(join(target, "package.json"), '{"type":"commonjs"}\n');
@@ -38,6 +39,7 @@ try {
   }
   const p07 = createRequire(import.meta.url)(join(target, "p07-approval.js"));
   const result = mode === "--status" ? await p07.inspectP07State(project) : mode === "--prepare-gate" ? await p07.prepareP07Gate(project) :
+    mode === "--review-gate" ? await p07.reviewP07Gate(project, { proposalId: option("proposal") }) :
     mode === "--withdraw" ? await p07.withdrawP07Gate(project, { proposalId: option("proposal") }) :
     await p07.registerP07Approval(project, { proposalId: option("proposal"), ownerReply: option("owner-reply") });
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");

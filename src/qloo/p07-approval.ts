@@ -108,6 +108,29 @@ export async function prepareP07Gate(projectRoot: string, input: { now?: number 
   } catch { throw new Error("P07_GATE_PREPARATION_FAILED"); }
 }
 
+// Read-only review: re-derive the artist, exact request and limits. No renewal, consumption, credential or HTTP.
+export async function reviewP07Gate(projectRoot: string, input: { proposalId: string; now?: number }) {
+  assertServer();
+  try {
+    const now = input.now ?? Date.now(); const base = await privateBase(projectRoot);
+    await requireFreshChain(projectRoot);
+    if (await exists(join(base, "p07-checkpoint.json"))) throw new Error();
+    const dir = await proposalDir(base, false); if (!dir) throw new Error();
+    const proposal = await readProposal(dir, input.proposalId);
+    if (now < Date.parse(proposal.created_at) || now >= Date.parse(proposal.approve_before) ||
+        await marked(dir, proposal.attempt_id, "consumed") || await marked(dir, proposal.attempt_id, "withdrawn")) throw new Error();
+    const binding = await inspectAcceptedP05Signal(projectRoot);
+    if (proposal.request_sha256 !== p07RequestSha256(binding.entityId) || proposal.signal_review_sha256 !== binding.reviewSha256 ||
+        proposal.p01_raw_sha256 !== binding.p01RawSha256) throw new Error();
+    return { status: "GATE_REVALIDATED_NO_REQUEST_SENT" as const, probe: "P07" as const, attempt_id: proposal.attempt_id,
+      approve_before: proposal.approve_before, approval_statement: p07Statement(proposal), profile: P07_PROFILE,
+      limits: { max_dispatches: 1, concurrency: 1, retries: 0, redirects: 0, timeout_ms: 4000, max_response_bytes: 262144, execution_window_minutes: P07_EXECUTION_WINDOW_MINUTES },
+      destination: "private/qloo-probes/p07/attempts/" + proposal.attempt_id + "/",
+      parameter_support: P07_PARAMETER_SUPPORT, known_uncertainties: P07_KNOWN_UNCERTAINTIES,
+      does_not_authorize: P07_DOES_NOT_AUTHORIZE };
+  } catch { throw new Error("P07_GATE_REVIEW_FAILED"); }
+}
+
 export type P07Registration = { status: "REGISTERED"; attempt_id: string; approved_at: string; approval_expires_at: string; window_minutes: number };
 // Registers the single-use approval ONLY if the reply is exactly the sentence for this proposal, every binding still re-verifies
 // against the private evidence, and nothing about P07 has happened yet. The timestamp records local registration, not a human click.

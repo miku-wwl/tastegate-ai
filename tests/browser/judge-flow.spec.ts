@@ -69,8 +69,20 @@ test("the evaluation page separates coverage, decision difference and independen
   const ablation = page.getByLabel("What Qloo's cultural evidence adds").first(); await expect(ablation).toBeVisible();
   for (const text of ["EVIDENCE_COVERAGE_GAIN", "DECISION_DIFFERENCE", "INDEPENDENTLY_VALIDATED_QUALITY_GAIN", "QUALITY_UPLIFT_NOT_ESTABLISHED", "same gate without cultural evidence"]) await expect(ablation).toContainText(text);
   await expect(page.getByText("Control: rules and identity only")).toBeVisible();
+  const priority = page.getByLabel("Priority among valid candidates").first();
+  await expect(priority).toContainText("only within one reviewed query");
+  await expect(priority).toContainText("only one hard-constraint-valid candidate");
   await shot(page, "judge-5-results");
   expect(await overflows(page)).toBe(false); expect(g.external).toEqual([]); expect(g.errors).toEqual([]);
+});
+
+test("the results page supports keyboard skip navigation and phone width", async ({ page }) => {
+  const g = guard(page); await page.setViewportSize({ width: 390, height: 844 }); await page.goto("/results");
+  await page.keyboard.press("Tab"); await expect(page.getByRole("link", { name: "Skip to the content" })).toBeFocused();
+  await page.keyboard.press("Enter"); await expect(page.locator("main")).toBeFocused();
+  await expect(page.getByLabel("Priority among valid candidates").first()).toBeVisible();
+  expect(await overflows(page)).toBe(false); await shot(page, "judge-6-results-mobile");
+  expect(g.external).toEqual([]); expect(g.errors).toEqual([]);
 });
 
 test("a phone-width screen has no horizontal scroll through the guided demo", async ({ page }) => {

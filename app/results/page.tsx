@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import results from "../../data/evaluation-results.json";
 import type { AblationSummary } from "../../src/eval/ablation-summary";
 import type { PolicyAggregate } from "../../src/eval/paired";
+import type { summarizeCandidatePriority } from "../../src/eval/candidate-priority";
 import { RESULTS_SCHEMA, type PublicResults } from "../../src/eval/publish";
 
 export const metadata: Metadata = {
@@ -18,6 +19,7 @@ type Comparison = {
   paired_signs: Record<"vs_AS_PROPOSED" | "vs_TOP_HIT_UNCHECKED", { shipped_violating: Sign; shipped_unverifiable: Sign; identity_errors: Sign }>;
   gate: { final_status_counts: Record<string, number>; final_items: number; final_items_with_taste_evidence: number; taste_evidence_coverage: number | "N/A" };
   cultural_evidence_ablation?: AblationSummary;
+  valid_candidate_priority?: ReturnType<typeof summarizeCandidatePriority>;
 };
 type Sign = { better: number; same: number; worse: number };
 type StratumView = { status: string; note: string; cases: number; cases_passed: number; failed_case_ids: string[] | number; comparison: Comparison | null };
@@ -86,9 +88,10 @@ export default function ResultsPage() {
   if (data.schema !== RESULTS_SCHEMA) return <main><h1>Evaluation results</h1><p role="alert" className="alert">No published results are available.</p></main>;
   const strata = data.strata as unknown as Record<string, StratumView>;
   return <>
+    <a className="skip-link" href="#main">Skip to the content</a>
     <header className="topbar"><div className="brand"><span className="logo" aria-hidden="true">TG</span><span>TasteGate <span className="brand-ai">AI</span></span></div>
       <nav aria-label="Pages"><a className="nav-link" href="/">← Back to the app</a></nav></header>
-    <main id="main" className="results">
+    <main id="main" className="results" tabIndex={-1}>
       <section className="hero"><p className="eyebrow">Evaluation</p><h1>Does the gate keep bad recommendations out?</h1>
         <p className="lede">The same plan is put through three policies on the <strong>same evidence</strong>, and an oracle that does not use TasteGate’s own rules counts what would reach the user.
           Strata are never pooled, and a stratum that was not run says so.</p></section>
@@ -108,6 +111,15 @@ export default function ResultsPage() {
           <p><strong>{s.cases_passed} of {s.cases}</strong> cases satisfied every expectation or invariant{typeof s.failed_case_ids === "object" && s.failed_case_ids.length ? ` (failed: ${s.failed_case_ids.join(", ")})` : ""}.</p>
           <div className="table-wrap"><Table c={s.comparison} /></div>
           {s.comparison.cultural_evidence_ablation && <Ablation a={s.comparison.cultural_evidence_ablation} />}
+          {s.comparison.valid_candidate_priority && <div aria-label="Priority among valid candidates">
+            <h3>Can cultural evidence prioritize valid candidates?</h3>
+            <p>Same identities, constraints and candidate pool. The control keeps input order; Qloo evidence may reorder only within one reviewed query.</p>
+            <p>{s.comparison.valid_candidate_priority.plans_with_multiple_valid_candidates} plans have multiple valid candidates;
+              {" "}{s.comparison.valid_candidate_priority.plans_with_common_reviewed_query} have a common reviewed ranking;
+              {" "}{s.comparison.valid_candidate_priority.plans_with_changed_priority} change priority.
+              This changes no acceptance and establishes no cultural quality gain.</p>
+            <p className="muted small">Real-data gap: the recorded shortlist has only one hard-constraint-valid candidate. No real prioritization between multiple valid candidates has been demonstrated.</p>
+          </div>}
           <ul className="plain">
             <li>{signText(s.comparison.paired_signs.vs_TOP_HIT_UNCHECKED.shipped_violating, "trust the first Qloo hit")}</li>
             <li>{signText(s.comparison.paired_signs.vs_AS_PROPOSED.shipped_violating, "ship the plan as proposed")}</li>

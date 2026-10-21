@@ -8,7 +8,7 @@ import { canonicalApproval } from "../src/qloo/owner-consent";
 import { inspectAcceptedP05Signal } from "../src/qloo/p05-signal";
 import { SAVED_P01_ATTEMPT } from "../src/qloo/p02-profile";
 import { inspectAcceptedP06Shortlist } from "../src/qloo/p06-shortlist";
-import { P07_PARAMETER_SUPPORT, P07_KNOWN_UNCERTAINTIES, inspectP07State, prepareP07Gate, registerP07Approval, withdrawP07Gate } from "../src/qloo/p07-approval";
+import { P07_PARAMETER_SUPPORT, P07_KNOWN_UNCERTAINTIES, inspectP07State, prepareP07Gate, reviewP07Gate, registerP07Approval, withdrawP07Gate } from "../src/qloo/p07-approval";
 import { P07_OFFER_WINDOW_HOURS, P07ProposalSchema, P07ReceiptSchema, verifyP07Consent } from "../src/qloo/p07-consent";
 import { P07_PROFILE, P07CheckpointSchema, P07ProfileSchema, P07SummarySchema, p07RequestSha256, p07RequestUrl, validP07Checkpoint } from "../src/qloo/p07-profile";
 import { matchesP07Signal } from "../src/qloo/p07-signal";
@@ -82,6 +82,26 @@ describe("P07 registry, profile and request", () => {
 });
 
 describe("P07 gate: preparation sends nothing, approves nothing and prints nothing private", () => {
+  it("revalidates an existing offer without renewing, approving or changing historical bytes", async () => {
+    const s = await ready(); const gate = await prepareP07Gate(s.root);
+    const paths = [...s.historical, proposalPath(s, gate.attempt_id)];
+    const before = await Promise.all(paths.map((f) => readFile(f)));
+    expect(await reviewP07Gate(s.root, { proposalId: gate.attempt_id })).toMatchObject({
+      status: "GATE_REVALIDATED_NO_REQUEST_SENT", attempt_id: gate.attempt_id,
+      approve_before: gate.approve_before, approval_statement: gate.approval_statement, profile: P07_PROFILE, limits: gate.limits });
+    expect(await Promise.all(paths.map((f) => readFile(f)))).toEqual(before);
+    expect(await noP07Files(s.base)).toEqual([]);
+  });
+  it.each(["expired", "future", "withdrawn", "consumed", "changed_binding", "changed_request", "unsettled_history"])("offline gate review refuses %s", async (damage) => {
+    const s = await ready(); const gate = await prepareP07Gate(s.root);
+    if (damage === "withdrawn") await withdrawP07Gate(s.root, { proposalId: gate.attempt_id });
+    if (damage === "consumed") await registerP07Approval(s.root, { proposalId: gate.attempt_id, ownerReply: gate.approval_statement });
+    if (damage === "changed_binding") await writeFile(join(s.base, "p05-radiohead-identity.private.json"), "{}");
+    if (damage === "changed_request") { const p = await readJson(proposalPath(s, gate.attempt_id)); p.request_sha256 = "0".repeat(64); await writeFile(proposalPath(s, gate.attempt_id), JSON.stringify(p)); }
+    if (damage === "unsettled_history") await rm(join(s.base, "p06/attempts"), { recursive: true, force: true });
+    const now = damage === "expired" ? Date.parse(gate.approve_before) : damage === "future" ? Date.now() - 60_000 : Date.now();
+    await expect(reviewP07Gate(s.root, { proposalId: gate.attempt_id, now })).rejects.toThrow("P07_GATE_REVIEW_FAILED");
+  });
   it("prepares a public-safe gate and writes only a private proposal", async () => {
     const s = await ready(); const before = await Promise.all(s.historical.map((f) => readFile(f))); const baseBefore = (await readdir(s.base)).sort();
     const gate = await prepareP07Gate(s.root);

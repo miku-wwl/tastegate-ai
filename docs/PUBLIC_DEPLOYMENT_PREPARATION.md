@@ -1,5 +1,7 @@
 # Public deployment: preparation only
 
+> **Phase 3C (2026-10-21).** Preparation remains local; `PUBLIC_DEPLOYMENT_STATUS=NOT_DEPLOYED_OWNER_RESOURCE_PENDING`. Current production build, clean-copy gate, refusal self-test and local smoke results are in the [execution report](PHASE3C_EXECUTION_REPORT.md). The Docker engine is unavailable in this session, so the container test is **NOT RUN**; the container PASS below is a previous Phase 3B result. No host, tunnel, DNS, public Qloo mode or uploaded private evidence.
+
 2026-10-21, Pacific/Auckland. Base commit `8c4937011` plus uncommitted Phase 3B changes. Workstream E (P0) of Phase 3B.
 
 **Nothing was deployed. No hosting was bought, no cloud resource provisioned, no DNS or production credential touched, no image pushed.** This document records what was prepared, what was verified on the development machine, and what only the owner can decide.

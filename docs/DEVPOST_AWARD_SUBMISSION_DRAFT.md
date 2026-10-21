@@ -1,20 +1,18 @@
 # Devpost submission draft: TasteGate AI
 
-2026-10-21, Pacific/Auckland. **DRAFT. Nothing was submitted, and nothing on Devpost was opened for editing.** Written for the owner to review, trim and paste. Workstream G (P1) of Phase 3B.
+2026-10-21, Pacific/Auckland. **DRAFT. Nothing submitted or opened for editing.** Updated in Phase 3C on base `9e7bff0` for owner review. The completed Phase 3B architecture is retained.
 
 ## 0. Official rules: verification status
 
 | Item | Status | Basis |
 | --- | --- | --- |
-| Deadline | **UNVERIFIED today.** Last known reading: **2026-10-30 23:45 EDT = 2026-10-31 16:45 NZDT** (Phase 0, 2026-10-16). A secondhand roundup says the window runs 30 Sept – 30 Oct 2026 without naming a time or time zone. | `qloo.devpost.com` and `/rules` return **HTTP 403** to this tool (2026-10-21), as they did in earlier phases. Search returned no first-hand rules page. |
-| Hosted, publicly reachable demo | **Probably required, UNVERIFIED.** Phase 0 recorded "working accessible application", "free judge access", "external hosting"; the secondhand roundup says "live, publicly reachable demo". | [PHASE0_SOURCES](PHASE0_SOURCES.md) S01/S02; roundup |
-| Public repository + open-source license | Recorded in Phase 0; the repository is public and MIT-licensed (`LICENSE`). | S01/S02 |
-| Demo video | Phase 0 read it as **not mandatory**; recheck. | S01/S02 |
-| "Substantive Qloo integration" | Recorded in Phase 0. Whether recorded responses satisfy it is a question for the organizer (below). | S02 |
+| Deadline | **Re-read:** 2026-10-31 16:45 NZDT. | [Official rules](https://qloo.devpost.com/rules), section 1 |
+| Demo / source / language / judging | Functional demo link, public licensed source, English materials, four equal criteria; free judge access through judging. Video not listed as mandatory. | Rules sections 4/6; see [current checklist](FINAL_RELEASE_CHECKLIST.md) |
+| Qloo integration | Working Qloo-integrated software required; recorded-only sufficiency still unanswered. | Rules section 4; organizer inquiry remains unsent |
 | Qloo data display and storage | Developer guide (read 2026-10-21): private server-side caching is fine with no time limit; **do not store Qloo response data in a public repository**; **no explicit rules on public display or attribution**; keys work through judging and are then turned off. | [developer guide](https://docs.qloo.com/reference/qloo-llm-hackathon-developer-guide) |
-| Eligibility, AI-assistance disclosure wording, judging weights | UNVERIFIED; Phase 0 read four equally weighted criteria and a reuse-disclosure requirement with a malformed phrase in section 4. | S02 |
+| Eligibility / exact account fields / disclosures | Owner must confirm eligibility and account-only fields; retain honest AI/reuse disclosure. | [Current checklist](FINAL_RELEASE_CHECKLIST.md) |
 
-**Action for the owner:** open the rules and overview in a browser and tick each row. Nothing below should be submitted before the deadline, the hosting requirement and the display terms are confirmed. Private-caching permission is **not** treated as permission to display Qloo data publicly.
+**Action for the owner:** review the [current checklist](FINAL_RELEASE_CHECKLIST.md), supply the demo resource and resolve display/integration questions. Private-caching permission is not public-display permission. Do not submit this draft without separate approval.
 
 ## 1. Fields
 
@@ -59,6 +57,8 @@ Next.js 16 / React 19 / TypeScript / Zod. Strict domain contracts and a validato
 The same plan goes through three policies (ship as proposed, trust the first Qloo hit, TasteGate) on the same evidence, scored by an oracle that does not use TasteGate's rules. On the 50-plan seeded synthetic holdout: shipping as proposed passes 26 violating and 23 unverifiable items to the user, trusting the first hit passes 31 violating items, **TasteGate passes none**, at the cost of 3 valid items dropped (plans over their own size limit) and a person asked on 10 plans. A **control without Qloo's cultural evidence** shows what the evidence adds: evidence coverage on 90 % of kept items, **no change to what is kept**, and **no independently validated quality gain** (`QUALITY_UPLIFT_NOT_ESTABLISHED`), at +1 request per plan and 5 points more `UNKNOWN`. Synthetic strata are authored and say nothing about Qloo; the live stratum was **not run**.
 
 ## 9. Impact
+
+**Phase 3C evidence addition (draft wording).** We also compare priorities on the same valid pool: 6 of 50 scored synthetic holdout plans change order within a common reviewed query. Retained sets remain identical to the no-cultural-evidence control. The real recorded shortlist has only one hard-constraint-valid candidate, so real prioritization among multiple valid candidates remains unproved. No cultural quality uplift is claimed.
 
 For builders of recommendation agents: a drop-in audit that catches wrong-city and unverified items before a person acts on them, and a vocabulary for "I could not prove this". The method generalizes beyond venues to any plan whose items can be identified and checked against hard facts. We claim **no** improvement in anyone's taste outcome.
 

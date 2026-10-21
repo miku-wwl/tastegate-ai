@@ -1,6 +1,6 @@
 # What Qloo adds, measured honestly
 
-2026-10-21, Pacific/Auckland. Base commit `8c4937011` plus uncommitted Phase 3B changes. Workstream D (P0) of Phase 3B. Reproduce with `npm run eval` (about 1 s, no network); the public aggregates are served at `/results` and stored in [`data/evaluation-results.json`](../data/evaluation-results.json).
+2026-10-21, Pacific/Auckland. Phase 3C base `9e7bff070adfd396df184205acbd56232dea14d2` plus uncommitted changes. Reproduce with `npm run eval` (offline); published synthetic aggregates are served at `/results` and stored in [`data/evaluation-results.json`](../data/evaluation-results.json). Phase 3B's retained-set null finding is preserved.
 
 ## 1. The answer in four lines
 
@@ -64,6 +64,19 @@ In the synthetic strata the "cultural evidence" is **authored**, so these number
 On the recorded NYC plan, Qloo's own ordering ranked an **out-of-city place above the verified NYC venue** (P06, one query, two places). TasteGate kept the venue (`REVIEW`) and rejected the place (`REPAIR_REJECTED`) because the provider's own geography put it in another country. This shows two things and no more: the shortlist-ranking parameter is honoured, and a high Qloo rank does not make a place valid for a hard constraint. It does **not** show that Qloo rankings are unreliable in general, nor that anyone would like either place.
 
 ## 6. What would establish more (and what will not happen before the deadline)
+
+### Phase 3C: secondary priority comparison, separate from retention
+
+`src/eval/candidate-priority.ts` now compares input-order priority **without cultural evidence** with evidence-supported order **within one reviewed ranking query**. Both arms share the rules-only gate's valid candidate pool, identities and constraints; incomplete or cross-query coverage abstains; equal scores preserve control order. The report graph is validated first. Nothing dispatches, changes acceptance, introduces an affinity threshold or claims liking probabilities.
+
+| Stratum | Plans scored | Multiple valid candidates | Common reviewed query | Priority changes |
+| --- | ---: | ---: | ---: | ---: |
+| Authored synthetic | 10 | 1 | 1 | 1 |
+| Seeded synthetic holdout | 50 | 22 | 16 | 6 |
+| Recorded | 3 variants of **one plan** | 0 | 0 | 0 |
+| Authorized live | NOT RUN | — | — | — |
+
+These synthetic ordering differences prove the comparison works, **not Qloo uplift**. Original retained sets still change in **0/10 and 0/50** plans. The real gap is exact: P06 ranks two places but only **one** passes the fixed NYC/country constraints. P05 supplies one candidate, which fails those constraints. There is no reviewed common-query ranking of two independently eligible real candidates under the same identity/constraint assumptions. P07 might return such candidates, but is unexecuted; discovery and locality alone would still not prove their identities or taste quality. **QUALITY_UPLIFT_NOT_ESTABLISHED** remains unchanged.
 
 1. **P07** (prepared, awaiting approval) plus an independently corroborated replacement would give the first real `REPAIR_VERIFIED`: a coverage and usefulness result about *discovery*, not a quality-uplift proof.
 2. A **human-judged taste study** would be the only independent measure of cultural fit. It is out of scope for the hackathon and is not claimed.

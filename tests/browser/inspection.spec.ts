@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { AuditReportSchema, ProviderAuditReportSchema } from "../../src/domain/report-schema";
@@ -7,7 +8,8 @@ import { AuditReportSchema, ProviderAuditReportSchema } from "../../src/domain/r
 // the app must stay synthetic/recorded only, can never start a live request, and must never echo that canary key.
 const canary = "local-browser-canary-not-a-provider-key";
 const recordedHere = existsSync("private/qloo-probes/p05/attempts/154bd4c0-ea64-49c5-ad95-cb57efd7647a/response.raw.json");
-const PUBLIC_SHOTS = ".artifacts/screens"; const PRIVATE_SHOTS = "private/phase2b-screens";
+// New private screenshots belong to this run; never overwrite a prior phase's review evidence.
+const PUBLIC_SHOTS = ".artifacts/screens"; const PRIVATE_SHOTS = "private/browser-runs/" + randomUUID();
 function guard(page: Page) {
   const externalRequests: string[] = []; const errors: string[] = [];
   void page.route("**/*", async (route) => {
