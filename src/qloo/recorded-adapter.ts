@@ -2,7 +2,7 @@ import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { CaptureSchema, digest, type Capture, type Entity, type Snapshot, type UnavailableReason } from "../domain/contracts";
+import { CaptureSchema, digest, type Capture, type Entity, type PublicReference, type Snapshot, type UnavailableReason } from "../domain/contracts";
 import { assertServer } from "./boundary-error";
 import { HACKATHON_ORIGIN } from "./server-config";
 import { projectInsightsPlaces, projectSearch, projectTags, type ProjectedTag } from "./projections";
@@ -253,7 +253,10 @@ export function createEmptyRecordedAdapter(): RecordedQlooAdapter {
     async rankPlaces(request) { return miss({ operation: "rank_places", ...request }); }, async discoverPlaces(request) { return miss({ operation: "discover_places", ...request }); } };
   return Object.freeze(adapter);
 }
-export function createRecordedAdapter(set: VerifiedRecordings): RecordedQlooAdapter {
+// `references` maps a provider reference (the per-process pseudonym of a provider identity) to the owner-registered official public
+// page for it. It is trusted host input like the recordings themselves; nothing from a request, a browser or a model can add to it.
+export type RecordedAdapterOptions = { references?: ReadonlyMap<string, PublicReference> };
+export function createRecordedAdapter(set: VerifiedRecordings, options: RecordedAdapterOptions = {}): RecordedQlooAdapter {
   assertServer();
   const observe = (capture: Capture | null, snapshot: Snapshot): RecordedObservation =>
     ({ source_mode: "recorded_live", dataset_id: set.datasetId, capture, snapshot: structuredClone(snapshot) });
@@ -261,6 +264,7 @@ export function createRecordedAdapter(set: VerifiedRecordings): RecordedQlooAdap
     observe(null, { kind: "unavailable", request, reason, detail });
   const adapter: RecordedQlooAdapter = {
     mode: "recorded_live", datasetId: set.datasetId,
+    publicReference(entityId) { return options.references?.get(entityId) ?? null; },
     async searchEntity(request) {
       const hit = set.searches.get(searchKey(request.requested_kind, request.query));
       return hit ? observe(hit.capture, { kind: "entity_lookup", query: request.query, requested_kind: request.requested_kind, matches: hit.candidates }) :

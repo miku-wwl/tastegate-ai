@@ -19,6 +19,7 @@ export const FINDING_LABEL: Record<Finding["code"], string> = {
   CLAIM_UNVERIFIED: "Claim unverified", EXPLAINABILITY_MISSING: "No detailed attribution", PREFERENCE_UNRESOLVED: "A taste signal is unresolved",
   PROVENANCE_REJECTED: "Provenance rejected", CALL_BUDGET_EXHAUSTED: "Call budget exhausted", TIMEOUT: "Timed out", CANCELLED: "Cancelled",
   REVALIDATION_ID_MISMATCH: "Identity changed on revalidation", LOOKUP_FAILED: "Lookup failed", IDENTITY_USER_CONFIRMED: "Identity confirmed by you",
+  IDENTITY_OFFICIAL_REFERENCE: "Identity corroborated by an official page", FACT_CONFLICT: "Official page contradicts the provider",
 };
 export const STAGES = ["Validate", "Resolve", "Retrieve", "Audit", "Repair", "Revalidate", "Report"] as const;
 export const isProvider = (r: AnyAuditReport): r is ProviderAuditReport => r.source_mode === "recorded_live" || r.source_mode === "authorized_live";
@@ -175,7 +176,8 @@ export const REPAIR_STATUS: Record<RepairStatus, { label: string; tone: string; 
   UNKNOWN: { label: "Unknown", tone: "unknown", icon: "?" },
 };
 export const REPAIR_REASON_TEXT: Record<RepairReason, string> = {
-  REPLACEMENT_VERIFIED: "A replacement passed every revalidation gate: its identity was established, every hard constraint passes and taste evidence is present.",
+  REPLACEMENT_VERIFIED: "A replacement passed every revalidation gate: its identity was corroborated by a second source, every hard constraint passes and taste evidence is present.",
+  REPLACEMENT_NEEDS_INDEPENDENT_CORROBORATION: "The replacement passed the hard checks and has taste evidence, but its identity rests only on your confirmation of the provider's own details. That is not a second source, so it is not verified and the original is not shown as repaired.",
   REPLACEMENT_FAILED_HARD_CHECK: "The proposed replacement failed a hard constraint according to the provider's own data, so it was rejected. The original is not repaired.",
   REPLACEMENT_DECLINED_BY_USER: "You declined the proposed replacement, so it was not used.",
   REPLACEMENT_AWAITING_IDENTITY_CONFIRMATION: "A replacement was proposed, but its identity cannot be established without your confirmation. Confirm or decline it below.",

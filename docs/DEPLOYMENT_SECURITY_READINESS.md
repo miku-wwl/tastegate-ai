@@ -2,11 +2,13 @@
 
 2026-10-20, Pacific/Auckland. Commit `6b446784d` plus uncommitted changes. **Nothing was deployed, committed, pushed or submitted.** This document records what was verified, what the organizer's terms allow, what they leave open, and the plan for a deployment the owner has not yet approved.
 
+> **Update, Phase 3B (2026-10-21).** The gate now has more than 47 checks (91 PASS, 0 FAIL, 0 NOT RUN) and covers the Docker build context, developer paths, the health endpoint and the runtime profiles; see [PUBLIC_DEPLOYMENT_PREPARATION](PUBLIC_DEPLOYMENT_PREPARATION.md). A production build now defaults to the `production-safe` profile (no recordings, no live, no credential). The organizer-terms analysis below is unchanged and still open (D3).
+
 ## Verdict
 
 | Question | Answer |
 | --- | --- |
-| Can the app be built so that private evidence, credentials and local files never ship? | **Yes, verified** by a repeatable gate: 47 checks, 47 PASS, 0 FAIL, 0 NOT RUN. A self-test plants leaks and the gate reports every one. |
+| Can the app be built so that private evidence, credentials and local files never ship? | **Yes, verified** by a repeatable gate: 91 checks, 91 PASS, 0 FAIL, 0 NOT RUN (47 before Phase 3B). A self-test plants leaks and the gate reports every one. |
 | Does the built server degrade safely with no private evidence? | **Yes, verified** against the standalone server: recorded mode unavailable and empty, synthetic and custom plans work, live locked, nothing substituted. |
 | Can a visitor start a live Qloo request? | **No**, unless a server operator configures a credential **and** an owner creates a grant **and** the visitor confirms each run. `TASTEGATE_DISABLE_LIVE=1` removes even that. |
 | May a public site display or replay Qloo-derived data? | **Not settled.** The developer guide allows private server-side caching and forbids response data in a public repository; it says nothing about public display. Ask the organizer before exposing any. |
@@ -24,7 +26,7 @@ It does not deploy, does not contact Qloo or any external host, and prints only 
 6. **Runtime.** Starts the standalone server from a working tree with no private directory, twice (live switched off; live not switched off but no grant), and checks: pages and static assets load, security headers are present, the catalog reports recorded mode unavailable and empty and live locked for the right reason, a synthetic scenario works, the curated recorded scenario is refused with a fixed 503, a custom plan gets an honest no-evidence audit, live attempts with and without acknowledgement are refused, malformed/oversized/wrong-type requests are refused, and **no canary appears in any response, header or the server's own output**.
 7. **Report** in `.artifacts/deploy-safety-report.json`; exit status 1 on any FAIL.
 
-`npm run safety:deploy:selftest` proves the gate can fail: it plants a canary in `public/` and a trace that pulls the private directory into the output, and passes only if the gate reports them (6 expected FAILs: canary content, sensitive path, trace entry, the standalone working tree, and the two runtime consequences). Both runs leave no temporary copy behind.
+`npm run safety:deploy:selftest` proves the gate can fail: it plants a canary in `public/` and a trace that pulls the private directory into the output, and passes only if the gate reports them (6 expected FAILs in Phase 2B+3A: canary content, sensitive path, trace entry, the standalone working tree, and the two runtime consequences; Phase 3B added a developer path in a public asset and a `.dockerignore` that no longer excludes `private/`, so the self-test now expects 8). Both runs leave no temporary copy behind.
 
 **What the gate cannot see.** The hosting platform's own configuration, a secret pasted into a dashboard, a tracked file added after the run, behaviour against the real Qloo API, or a differently built artifact. Re-run it on the exact commit to be deployed.
 

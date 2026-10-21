@@ -1,11 +1,12 @@
 import type { AnyAuditReport, AuditInput, Entity } from "../domain/contracts";
+import { culturalFootprint, rulesAndIdentityOnly } from "./ablation";
 import { gateOutcome, keptByGate, runAsProposed, runTopHitUnchecked, POLICIES, type PolicyId, type PolicyOutcome } from "./baselines";
 import type { Built } from "./harness";
 import { classifyEntity, planLimit } from "./oracle";
 
 // One plan, three policies, one oracle. The score counts what each policy would put in front of the user.
 export type PolicyScore = {
-  policy: PolicyId; shipped: number; shipped_valid: number; shipped_violating: number; shipped_unverifiable: number;
+  policy: PolicyOutcome["policy"]; shipped: number; shipped_valid: number; shipped_violating: number; shipped_unverifiable: number;
   proposal_valid: number; valid_kept: number; proposal_violating: number; violating_removed: number;
   identity_errors: number; over_limit: boolean; requests: number; elapsed_ms: number; paused_for_human: boolean; human_decisions: number;
 };
@@ -28,7 +29,17 @@ export function scorePolicy(outcome: PolicyOutcome, input: AuditInput, intended:
 }
 // What the gate itself reports about the plan it shipped (the baselines collect no evidence, so they have no equivalent).
 export type GateFacts = { final_status: string; stop_reason: string; final_items: number; final_with_taste_evidence: number };
-export type PairedResult = { id: string; scores: Record<PolicyId, PolicyScore>; gate: GateFacts };
+// The ablation row: the treatment (TasteGate with Qloo's cultural evidence) against the control (the same gate without it), both
+// scored by the SAME independent oracle on the SAME plan. See ablation.ts for what the control shares and what it lacks.
+export type AblationRow = {
+  control: PolicyScore; treatment: PolicyScore; shipped_with_cultural_evidence: number;
+  unknown: { audited: number; treatment: number; rules_only: number };
+  assessments: { audited: number; verdict_differs: number }; items_with_cultural_ordering: number;
+  replacements: { treatment_accepted: number; control_accepted: number; treatment_valid: number; control_valid: number };
+  differing: { same_shipped_set: boolean; only_treatment: number; only_control: number };
+  calls: { with_cultural_evidence: number; without: number };
+};
+export type PairedResult = { id: string; scores: Record<PolicyId, PolicyScore>; gate: GateFacts; ablation: AblationRow };
 
 // Runs both baselines on one built case, next to the gate's report for the same plan. A baseline that throws is recorded
 // as shipping nothing rather than hiding the case.
@@ -37,10 +48,22 @@ export async function runPaired(id: string, built: Built, report: AnyAuditReport
   const proposed = runAsProposed(built.input, built.intended);
   const naive = await runTopHitUnchecked(built.input, built.adapter).catch((): PolicyOutcome => ({ policy: "TOP_HIT_UNCHECKED", shipped: [], requests: 0, elapsed_ms: 0, paused_for_human: false, human_decisions: 0, notes: ["baseline failed"] }));
   const outcomes: Record<PolicyId, PolicyOutcome> = { AS_PROPOSED: proposed, TOP_HIT_UNCHECKED: naive, TASTEGATE: gate };
+  const control = rulesAndIdentityOnly(report); const footprint = culturalFootprint(report, gate);
+  // Replacements judged by the independent oracle from their TRUE facts (by entity ID where the world is authored), never by Qloo affinity.
+  const replacementsOf = (o: PolicyOutcome) => o.shipped.filter((s) => s.origin === "replacement").map((s) => classifyEntity(s.entity ? built.truthOf?.(s.entity.id) ?? s.entity : null, built.input).class);
+  const shippedKeys = (o: PolicyOutcome) => new Set(o.shipped.map((s) => s.origin + ":" + s.slot + ":" + (s.entity?.id ?? "none")));
+  const treated = shippedKeys(gate); const controlled = shippedKeys(control);
+  const ablation: AblationRow = { treatment: scorePolicy(gate, built.input, built.intended, built.truthOf), control: scorePolicy(control, built.input, built.intended, built.truthOf),
+    shipped_with_cultural_evidence: footprint.shipped_with_cultural_evidence, unknown: { audited: footprint.audited_items, treatment: footprint.tastegate_unknown, rules_only: footprint.rules_only_unknown },
+    assessments: { audited: footprint.audited_items, verdict_differs: footprint.label_differences }, items_with_cultural_ordering: footprint.items_with_cultural_ordering,
+    replacements: { treatment_accepted: replacementsOf(gate).length, control_accepted: replacementsOf(control).length,
+      treatment_valid: replacementsOf(gate).filter((c) => c === "VALID").length, control_valid: replacementsOf(control).filter((c) => c === "VALID").length },
+    differing: { same_shipped_set: treated.size === controlled.size && [...treated].every((k) => controlled.has(k)), only_treatment: [...treated].filter((k) => !controlled.has(k)).length, only_control: [...controlled].filter((k) => !treated.has(k)).length },
+    calls: { with_cultural_evidence: gate.requests, without: control.requests } };
   const finalOriginals = report.original_audits.filter((a) => keptByGate(report, a));
   const gateFacts: GateFacts = { final_status: report.final_status, stop_reason: report.stop_reason, final_items: gate.shipped.length,
     final_with_taste_evidence: finalOriginals.filter((a) => a.cultural_relevance !== null).length + report.repairs.filter((r) => r.accepted && r.revalidation.cultural_relevance !== null).length };
-  return { id, gate: gateFacts, scores: Object.fromEntries(POLICIES.map((p) => [p, scorePolicy(outcomes[p], built.input, built.intended, built.truthOf)])) as Record<PolicyId, PolicyScore> };
+  return { id, gate: gateFacts, ablation, scores: Object.fromEntries(POLICIES.map((p) => [p, scorePolicy(outcomes[p], built.input, built.intended, built.truthOf)])) as Record<PolicyId, PolicyScore> };
 }
 
 // ---- aggregation: counts first, rates second, never pooled across strata ----

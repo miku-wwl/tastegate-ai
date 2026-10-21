@@ -6,6 +6,6 @@ export default defineConfig({
   use: { baseURL: "http://127.0.0.1:3100", browserName: "chromium", viewport: { width: 1280, height: 960 } },
   webServer: {
     command: "node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3100", url: "http://127.0.0.1:3100", reuseExistingServer: false,
-    env: { NEXT_TELEMETRY_DISABLED: "1", QLOO_MODE: "live", QLOO_API_KEY: "local-browser-canary-not-a-provider-key", TASTEGATE_DISABLE_LIVE: "1" }, timeout: 30_000,
+    env: { NEXT_TELEMETRY_DISABLED: "1", TASTEGATE_PROFILE: "development", QLOO_MODE: "live", QLOO_API_KEY: "local-browser-canary-not-a-provider-key", TASTEGATE_DISABLE_LIVE: "1" }, timeout: 30_000,
   },
 });

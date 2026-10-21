@@ -11,6 +11,10 @@
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
+    "build:standalone": "node scripts/build-standalone.mjs",
+    "start:prod": "node scripts/start-production.mjs",
+    "smoke:prod": "node scripts/smoke-production.mjs",
+    "smoke:container": "node scripts/container-smoke.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/playwright.mjs test",
@@ -23,6 +27,7 @@
     "probe:p04": "node scripts/qloo-probe-p04.mjs",
     "probe:p05": "node scripts/qloo-probe-p05.mjs",
     "probe:p06": "node scripts/qloo-probe-p06.mjs",
+    "probe:p07": "node scripts/qloo-probe-p07.mjs",
     "live:grant": "node scripts/live-grant.mjs",
     "safety:deploy": "node scripts/deploy-safety.mjs",
     "safety:deploy:selftest": "node scripts/deploy-safety.mjs --self-test"

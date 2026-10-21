@@ -214,6 +214,7 @@ export const FindingCodeSchema = z.enum([
   "PREFERENCE_UNRESOLVED", "PROVENANCE_REJECTED", "CALL_BUDGET_EXHAUSTED", "TIMEOUT", "CANCELLED",
   "REVALIDATION_ID_MISMATCH", "LOOKUP_FAILED",
   "CONFIRMATION_REQUIRED", "EVIDENCE_UNAVAILABLE", "FACT_UNCONFIRMED", "IDENTITY_USER_CONFIRMED",
+  "IDENTITY_OFFICIAL_REFERENCE", "FACT_CONFLICT",
 ]);
 export const FindingSchema = z.strictObject({
   code: FindingCodeSchema,
@@ -237,21 +238,41 @@ export const CandidateAuditSchema = z.strictObject({
     ctx.addIssue({ code: "custom", message: "Unsupported PASS verdict" });
 });
 export type CandidateAudit = z.infer<typeof CandidateAuditSchema>;
-// How a replacement's identity was established. `independent_lookup`: a separate search returned the same provider
-// identity. `user_confirmation`: the user confirmed the provider's candidate details (no independent lookup existed).
-export const IdentityBasisSchema = z.enum(["independent_lookup", "user_confirmation"]);
+// How a replacement's identity was established.
+//   independent_lookup         a separate provider search returned the same provider identity;
+//   official_public_reference  a host-registered, non-provider source (the venue's own published page, reviewed by the owner) names
+//                              the same venue, city and country as the provider record;
+//   user_confirmation          the user confirmed the provider's own candidate details. That is a decision, not evidence from a
+//                              second source: it can keep a proposal in the plan for review but can never make a repair VERIFIED.
+export const IdentityBasisSchema = z.enum(["independent_lookup", "official_public_reference", "user_confirmation"]);
 export type IdentityBasis = z.infer<typeof IdentityBasisSchema>;
+// A reference to a public page the host registered for one provider identity. TasteGate does not fetch it: it records that the
+// owner reviewed the page, which statements it supports, and a hash of what was reviewed, and it displays the URL for anyone to check.
+export const PublicReferenceSchema = z.strictObject({
+  source: z.literal("OFFICIAL_PUBLIC_REFERENCE"), publisher: text(120),
+  url: z.string().max(300).refine((v) => { try { const u = new URL(v); return u.protocol === "https:" && !u.username && !u.password && !u.hash; } catch { return false; } }, "An https URL without credentials is required"),
+  asserted_name: text(200), asserted_city: text(100), asserted_country: z.string().regex(/^[A-Z]{2}$/),
+  reviewed_utc: z.iso.datetime(), review_basis: z.literal("OWNER_REVIEW_OF_PUBLIC_PAGE"), content_sha256: fingerprint,
+});
+export type PublicReference = z.infer<typeof PublicReferenceSchema>;
 export const RepairSchema = z.strictObject({
   replaces: id, replacement_candidate_id: id, proposed_entity_id: entityRef, discovery_evidence_refs: ids,
   // The separate lookup attempted for this proposal (a search result or an explicit "unavailable" record).
   lookup_evidence_ref: id,
   revalidation: CandidateAuditSchema, accepted: z.boolean(), identity_basis: IdentityBasisSchema.nullable(),
+  // The public reference registered for the proposed identity, if any (used for identity when basis is official_public_reference,
+  // and checked for contradictions either way). Always null for authored synthetic fixtures.
+  corroboration: PublicReferenceSchema.nullable().default(null),
 }).superRefine((r, ctx) => {
   if (r.replacement_candidate_id !== r.revalidation.candidate_id ||
       (r.accepted && (r.revalidation.verdict !== "PASS" || r.revalidation.entity_id !== r.proposed_entity_id)))
     ctx.addIssue({ code: "custom", message: "Replacement has not passed revalidation" });
   if ((r.revalidation.resolution === "resolved") !== (r.identity_basis !== null))
     ctx.addIssue({ code: "custom", message: "Identity basis contradicts the revalidation" });
+  if (r.identity_basis === "official_public_reference" && r.corroboration === null)
+    ctx.addIssue({ code: "custom", message: "An official-reference identity needs its reference" });
+  if (r.accepted && r.identity_basis !== "independent_lookup" && r.identity_basis !== "official_public_reference")
+    ctx.addIssue({ code: "custom", message: "A repair is verified only by independent corroboration" });
 });
 export type Repair = z.infer<typeof RepairSchema>;
 // Per repair target slot. A repair target is an original that is BLOCKED or has no identity; missing taste evidence
@@ -260,7 +281,7 @@ export const RepairStatusSchema = z.enum(["REPAIR_VERIFIED", "REPAIR_REJECTED", 
 export type RepairStatus = z.infer<typeof RepairStatusSchema>;
 export const RepairReasonSchema = z.enum([
   "REPLACEMENT_VERIFIED", "REPLACEMENT_FAILED_HARD_CHECK", "REPLACEMENT_DECLINED_BY_USER",
-  "REPLACEMENT_AWAITING_IDENTITY_CONFIRMATION", "REPLACEMENT_EVIDENCE_MISSING",
+  "REPLACEMENT_AWAITING_IDENTITY_CONFIRMATION", "REPLACEMENT_EVIDENCE_MISSING", "REPLACEMENT_NEEDS_INDEPENDENT_CORROBORATION",
   "NO_DISCOVERY_EVIDENCE", "DISCOVERY_EMPTY", "NO_CONFIRMED_SIGNAL", "COUNT_CONSTRAINT_NOT_REPAIRABLE", "REPAIR_DISABLED",
   "CALL_BUDGET_EXHAUSTED", "WORKFLOW_STOPPED",
 ]);

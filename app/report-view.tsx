@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { RepairAssessmentView } from "./trace-view";
 import type { AnyAuditReport, AuditInput, CandidateAudit, Confirmation, Entity, Finding, ProviderAuditReport, Repair } from "../src/domain/contracts";
 import {
   FINDING_LABEL, MODE_INFO, OUTCOME_TEXT, STAGES, VERDICT, describeConstraint, evidenceSource, highlights, proposedEntity,
@@ -123,8 +124,11 @@ export function RepairCard({ report, repair }: { report: AnyAuditReport; repair:
   const discovery = proposal ? report.evidence.find((e) => e.evidence_id === proposal.evidenceRef) : undefined;
   const scope = discovery?.snapshot.kind === "discover_places" ? discovery.snapshot : undefined;
   const failed = repair.revalidation.findings.filter((f) => f.state === "fail").map((f) => FINDING_LABEL[f.code]);
-  const basis = repair.identity_basis === "user_confirmation" ? " Its identity rests on your confirmation of the provider's details." : repair.identity_basis === "independent_lookup" ? " Its identity was confirmed by a separate provider lookup." : "";
+  const basis = repair.identity_basis === "user_confirmation" ? " Its identity rests on your confirmation alone, which is not a second source." : repair.identity_basis === "independent_lookup" ? " Its identity was confirmed by a separate provider lookup." :
+    repair.identity_basis === "official_public_reference" ? ` Its identity was corroborated by an official public page (${repair.corroboration?.publisher ?? "reviewed by the owner"}).` : "";
+  const uncorroborated = !repair.accepted && repair.revalidation.verdict === "PASS";
   const note = repair.accepted ? `Accepted after revalidation: identity, every hard constraint and taste evidence all passed.${basis}` :
+    uncorroborated ? `Not verified: every check passed, but the identity has no second source.${basis}` :
     `Rejected after revalidation${failed.length ? `: ${failed.join(" and ").toLowerCase()}` : ": identity, constraints or taste evidence could not be confirmed"}.${basis}`;
   const origin = report.source_mode === "fixture" ? "synthetic discovery" : report.source_mode === "authorized_live" ? "a live Qloo Insights discovery" : "a recorded Qloo Insights discovery";
   return <div className="repair">
@@ -132,6 +136,7 @@ export function RepairCard({ report, repair }: { report: AnyAuditReport; repair:
       {scope?.signal_scope === "first_confirmed_artist" && " from your confirmed artist signal only, with no geography filter"}.</p>
     <AuditCard report={report} audit={repair.revalidation} title={proposal?.entity.name ?? repair.proposed_entity_id}
       entity={proposal?.entity ?? null} claims={0} note={note} />
+    <RepairAssessmentView report={report} repair={repair} />
     {proposal?.score != null && <p className="affinity"><span className="mono">query.affinity = {proposal.score.toFixed(3)}</span> — Qloo’s query-relative score for
       this one request. Not comparable across queries and not a probability that you will like it; TasteGate makes no decision from it.</p>}
   </div>;

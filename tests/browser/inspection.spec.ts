@@ -240,7 +240,7 @@ test("the evaluation results page states method, numbers, honest limits and what
   const g = guard(page); await page.goto("/results");
   await expect(page.getByRole("heading", { name: "Does the gate keep bad recommendations out?" })).toBeVisible();
   const holdout = page.getByRole("region", { name: /Seeded holdout/ });
-  await expect(holdout).toContainText("RUN"); await expect(holdout.getByRole("table")).toBeVisible();
+  await expect(holdout).toContainText("RUN"); await expect(holdout.getByRole("table").first()).toBeVisible();
   await expect(holdout.getByRole("columnheader", { name: "TasteGate" })).toBeVisible();
   await expect(holdout.getByRole("row", { name: /Hard-constraint violations that reach the user/ })).toBeVisible();
   const live = page.getByRole("region", { name: /Live Qloo requests/ }); await expect(live).toContainText("NOT RUN"); await expect(live.getByRole("table")).toHaveCount(0);

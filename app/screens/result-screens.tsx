@@ -10,6 +10,7 @@ import {
   REPAIR_REASON_TEXT, REPAIR_STATUS, VERDICT, blockingChoices, comparisonStats, isProvider, repairRows, replacementChoices, resolvedEntity, slotOutcomes, type Screen,
 } from "../view-model";
 import type { RunProblem } from "../run-errors";
+import { DecisionTrace } from "../trace-view";
 import { Nav, ProblemAlert, ScreenHeading } from "./shared";
 
 type Common = { report: AnyAuditReport; headingRef: Ref<HTMLHeadingElement>; problem: RunProblem | null; go: (screen: Screen) => void };
@@ -73,7 +74,8 @@ export function RepairScreen({ report, headingRef, problem, go, busy, onSubmit }
       <p>A recommendation is a repair target only when it is <strong>blocked</strong> by a hard constraint or has <strong>no established identity</strong>. Every item here is either verified or only missing taste evidence — which is a soft gate:
         TasteGate does not replace a verified venue just because evidence is missing, and it does not approve anything just because a score exists.</p>
     </div> : <>
-      <p className="lede-small">For each failing recommendation TasteGate may propose one replacement, then audits that replacement <em>from scratch</em>. A replacement is accepted only if its identity, every hard constraint and its taste evidence all pass.</p>
+      <p className="lede-small">For each failing recommendation TasteGate may propose one replacement, then audits that replacement <em>from scratch</em>. A replacement is accepted only if its identity, every hard constraint and its taste evidence all pass
+        <strong> and</strong> its identity has a second source (a separate provider lookup or a registered official public page). Your own confirmation is recorded, but it is not a second source.</p>
       <ul className="repair-list">{rows.map((row) => {
         const status = REPAIR_STATUS[row.outcome.status];
         return <li key={row.slot} className={`panel repair-row tone-edge-${status.tone}`}>
@@ -85,7 +87,7 @@ export function RepairScreen({ report, headingRef, problem, go, busy, onSubmit }
         </li>; })}</ul>
       {provider && pending.length > 0 && <ConfirmPanel report={provider} choices={pending} busy={busy}
         title="Confirm a proposed replacement" skipLabel="No — do not use this replacement" submitLabel={report.source_mode === "authorized_live" ? "Apply my decision (sends live requests)" : "Apply my decision"}
-        intro="No independent lookup could identify this proposed venue, so its identity rests on your decision. Confirm it only if the details shown match the venue you want; otherwise decline it. The replacement is then re-audited."
+        intro="No independent lookup could identify this proposed venue, so its identity would rest on your decision. Confirm it only if the details shown match the venue you want; otherwise decline it. The replacement is then re-audited — but your confirmation alone does not make the repair verified."
         onSubmit={onSubmit} />}
     </>}
     <p className="muted small">{stats.repairsProposed} replacement{stats.repairsProposed === 1 ? "" : "s"} proposed · {stats.repairVerified} verified · {stats.repairRejected} rejected · {stats.repairUnavailable} unavailable · {stats.evidenceInsufficient} with insufficient evidence · {stats.repairUnknown} unknown. One repair round at most.</p>
@@ -113,6 +115,7 @@ export function CompareScreen({ report, headingRef, problem, go, onRestart }: Co
     <Summary report={report} />
     <dl className="tiles" aria-label="What changed">{tiles.map((t) => <div key={t.label} className="tile"><dt>{t.label}</dt><dd>{t.value}</dd><dd className="tile-note">{t.note}</dd></div>)}</dl>
     <Comparison report={report} />
+    <DecisionTrace report={report} />
     <Limits report={report} />
     <Ledger report={report} />
     <Export report={report} />

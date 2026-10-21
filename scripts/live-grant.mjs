@@ -1,10 +1,13 @@
 // Local-only owner administration of the AUTHORIZED_LIVE grant. It never contacts Qloo and never reads a credential.
 //   --status                                  show whether a usable grant exists and what is left of it
-//   --create --owner-reply=<text> --gate-id=<id> --minutes=<1-60> --max-requests=<1-14> --max-runs=<1-5> --operations=<a,b,..>
-//                                             create ONE time-boxed, request-budgeted grant. Run ONLY after the owner's own
-//                                             explicit reply naming LIVE; the reply text is recorded verbatim. An existing usable
-//                                             grant is never replaced: revoke it or wait for it to expire.
-//   --revoke                                  revoke the current grant (the file is kept as history)
+//   --propose --minutes=<1-60> --max-requests=<1-14> --max-runs=<1-5> --operations=<a,b,..>
+//                                             write the TERMS of a grant as a proposal (no authority) and print the ONE sentence
+//                                             that approves exactly those terms. The offer lapses after 60 minutes.
+//   --create --proposal=<id> --owner-reply=<sentence>
+//                                             turn that proposal into a grant. The reply must equal the printed sentence exactly;
+//                                             anything else (a refusal, a hedge, "LIVE", other terms) is refused. The terms come
+//                                             from the stored proposal, never from this command line, and a proposal is single-use.
+//   --revoke                                  revoke the current grant (the file is kept as history) and withdraw unused proposals
 // Operations: entity_lookup, tag_lookup, rank_places, discover_places. Output is public-safe: no credential, provider ID or URL.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
@@ -23,24 +26,33 @@ const integer = (name) => { const value = option(name); if (value === null || !/
 let target = null;
 try {
   const mode = args[0];
-  const known = new Set(["--status", "--revoke", "--create"]);
-  if (!known.has(mode) || (mode !== "--create" && args.length !== 1) || (mode === "--create" && args.length !== 7)) throw new Error("INVALID_ARGUMENTS");
-  let create = null;
+  const known = new Set(["--status", "--revoke", "--create", "--propose"]);
+  if (!known.has(mode) || (["--status", "--revoke"].includes(mode) && args.length !== 1) || (mode === "--create" && args.length !== 3) || (mode === "--propose" && args.length !== 5)) throw new Error("INVALID_ARGUMENTS");
+  let create = null; let propose = null;
   if (mode === "--create") {
-    const reply = option("owner-reply"); const gate = option("gate-id"); const operations = option("operations");
-    if (reply === null || gate === null || operations === null) throw new Error("INVALID_ARGUMENTS");
-    create = { ownerReply: reply, gateId: gate, minutes: integer("minutes"), maxRequests: integer("max-requests"), maxRuns: integer("max-runs"), operations: operations.split(",") };
+    const reply = option("owner-reply"); const proposal = option("proposal");
+    if (reply === null || proposal === null) throw new Error("INVALID_ARGUMENTS");
+    create = { proposalId: proposal, ownerReply: reply };
+  }
+  if (mode === "--propose") {
+    const operations = option("operations"); if (operations === null) throw new Error("INVALID_ARGUMENTS");
+    propose = { minutes: integer("minutes"), maxRequests: integer("max-requests"), maxRuns: integer("max-runs"), operations: operations.split(",") };
   }
   const cache = join(scriptRoot, ".cache/qloo-probe"); await mkdir(cache, { recursive: true });
   target = await mkdtemp(join(cache, "live-grant-"));
   await writeFile(join(target, "package.json"), '{"type":"commonjs"}\n');
-  for (const name of ["boundary-error", "live-grant"]) {
+  for (const name of ["boundary-error", "owner-consent", "live-grant"]) {
     const source = await readFile(join(scriptRoot, "src/qloo", `${name}.ts`), "utf8");
     await writeFile(join(target, `${name}.js`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText);
   }
   const grants = createRequire(import.meta.url)(join(target, "live-grant.js"));
   let result;
-  if (mode === "--create") result = await grants.createLiveGrant(project, create);
+  if (mode === "--propose") {
+    const p = await grants.proposeLiveGrant(project, propose);
+    result = { status: p.status, proposal_id: p.proposal_id, approve_before: p.approve_before, environment: p.environment, operations: p.operations, minutes: p.minutes,
+      max_requests: p.max_requests, max_runs: p.max_runs, per_request_timeout_ms: 4000, max_response_bytes: 262144, terms_sha256: p.terms_sha256, approval_statement: p.approval_statement };
+  }
+  else if (mode === "--create") result = await grants.createLiveGrant(project, create);
   else if (mode === "--revoke") result = await grants.revokeLiveGrant(project);
   else {
     const status = await grants.loadLiveGrant(project);

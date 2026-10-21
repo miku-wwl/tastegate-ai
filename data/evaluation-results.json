@@ -1,7 +1,7 @@
 {
   "schema": "tastegate.evaluation-results.v1",
-  "generated_at_utc": "2026-10-20T08:52:48.083Z",
-  "base_commit": "6b446784d01def511fe4ce1d53fe4ca4dd39b27e",
+  "generated_at_utc": "2026-10-20T13:08:22.133Z",
+  "base_commit": "8c4937011b9e2dcc40b289ccd24bcbad6d2b4a5b",
   "working_tree_dirty": true,
   "holdout_seed": 20261020,
   "caveat": "Development cases shaped the gate and are not a benchmark. The seeded holdout is synthetic: it shows constructed failure patterns are handled, not that real recommendations behave this way. No live Qloo request was made. Latency is local in-process time only.",
@@ -74,9 +74,9 @@
             "plans_over_limit": 1,
             "latency_ms": {
               "samples": 10,
-              "p50": 0.06,
-              "p95": 0.51,
-              "max": 0.51
+              "p50": 0.04,
+              "p95": 0.37,
+              "max": 0.37
             },
             "violating_removed_rate": 0,
             "valid_kept_rate": 1
@@ -97,9 +97,9 @@
             "plans_over_limit": 0,
             "latency_ms": {
               "samples": 10,
-              "p50": 1.34,
-              "p95": 16.85,
-              "max": 16.85
+              "p50": 1.04,
+              "p95": 13.39,
+              "max": 13.39
             },
             "violating_removed_rate": 1,
             "valid_kept_rate": 0.75
@@ -140,6 +140,108 @@
               "worse": 0
             }
           }
+        },
+        "cultural_evidence_ablation": {
+          "treatment": "TASTEGATE_WITH_QLOO_CULTURAL_EVIDENCE",
+          "control": "RULES_AND_IDENTITY_ONLY",
+          "plans": 10,
+          "evidence_kind": "AUTHORED_SYNTHETIC",
+          "shared_with_control": [
+            "recommendations",
+            "constraints",
+            "identity decisions",
+            "provider geography",
+            "candidate pool",
+            "every non-cultural rule"
+          ],
+          "EVIDENCE_COVERAGE_GAIN": {
+            "shipped_items": 5,
+            "with_cultural_evidence": {
+              "treatment": 4,
+              "control": 0
+            },
+            "coverage_treatment": 0.8,
+            "note": "Coverage counts kept items that carry Qloo's query-relative evidence. It is not a statement that those items are better."
+          },
+          "DECISION_DIFFERENCE": {
+            "plans_with_a_different_kept_plan": 0,
+            "items_only_in_treatment": 0,
+            "items_only_in_control": 0
+          },
+          "INDEPENDENTLY_VALIDATED_QUALITY_GAIN": {
+            "plans_treatment_strictly_better": 0,
+            "plans_control_strictly_better": 0,
+            "plans_tied": 10,
+            "oracle_metrics": {
+              "false_accepts_violating_items_shipped": {
+                "treatment": 0,
+                "control": 0
+              },
+              "items_shipped_with_nothing_proving_them": {
+                "treatment": 0,
+                "control": 0
+              },
+              "wrong_identities_shipped": {
+                "treatment": 0,
+                "control": 0
+              },
+              "valid_items_kept": {
+                "treatment": 3,
+                "control": 3
+              },
+              "false_rejects_valid_items_dropped": {
+                "treatment": 1,
+                "control": 1
+              }
+            },
+            "cultural_fit_ground_truth": "NONE_EXISTS_INDEPENDENT_OF_QLOO_AFFINITY"
+          },
+          "CANDIDATE_ASSESSMENT_DIFFERENCES": {
+            "audited_items": 18,
+            "items_whose_verdict_differs": 2,
+            "note": "A rules-only gate cannot tell PASS from REVIEW or UNKNOWN-for-missing-evidence; these are the items whose label changes when the cultural evidence is removed."
+          },
+          "EVIDENCE_SUPPORTED_RANKING": {
+            "items_with_a_cultural_ordering": {
+              "treatment": 14,
+              "control": 0
+            },
+            "note": "An ordering position (a ranking or a discovery order) exists only with cultural evidence. It orders items for display; it decides no hard check."
+          },
+          "VALID_REPAIRS": {
+            "accepted": {
+              "treatment": 2,
+              "control": 2
+            },
+            "accepted_and_valid_by_oracle": {
+              "treatment": 2,
+              "control": 2
+            },
+            "accepted_but_not_valid_by_oracle": {
+              "treatment": 0,
+              "control": 0
+            }
+          },
+          "unknown_frequency": {
+            "audited_items": 18,
+            "treatment": 4,
+            "control": 3,
+            "treatment_rate": 0.222,
+            "control_rate": 0.167,
+            "note": "Items the treatment leaves UNKNOWN beyond the control are those missing cultural evidence or an unresolved taste signal; they are kept, not guessed."
+          },
+          "runtime": {
+            "treatment_local_latency_ms_median": 1.04,
+            "control": "NOT_SEPARATELY_MEASURED",
+            "note": "In-process time of the treatment's own run; the control is derived from the same run, so no separate time exists and none is invented."
+          },
+          "cost": {
+            "calls_per_plan_with_cultural_evidence": 6.3,
+            "calls_per_plan_without": 5.4,
+            "note": "The control skips the common-set ranking request. Its elapsed time is derived from the same run and is not separately measured."
+          },
+          "quality_uplift": "QUALITY_UPLIFT_NOT_ESTABLISHED",
+          "reading": "The cultural evidence in this stratum is authored, so nothing here is evidence about Qloo."
         },
         "gate": {
           "final_status_counts": {
@@ -220,9 +322,9 @@
             "plans_over_limit": 2,
             "latency_ms": {
               "samples": 50,
-              "p50": 0.06,
-              "p95": 0.16,
-              "max": 0.55
+              "p50": 0.04,
+              "p95": 0.12,
+              "max": 0.15
             },
             "violating_removed_rate": 0,
             "valid_kept_rate": 1
@@ -243,9 +345,9 @@
             "plans_over_limit": 0,
             "latency_ms": {
               "samples": 50,
-              "p50": 0.75,
-              "p95": 1.96,
-              "max": 2.17
+              "p50": 0.56,
+              "p95": 1.02,
+              "max": 2.95
             },
             "violating_removed_rate": 1,
             "valid_kept_rate": 0.945
@@ -286,6 +388,108 @@
               "worse": 0
             }
           }
+        },
+        "cultural_evidence_ablation": {
+          "treatment": "TASTEGATE_WITH_QLOO_CULTURAL_EVIDENCE",
+          "control": "RULES_AND_IDENTITY_ONLY",
+          "plans": 50,
+          "evidence_kind": "AUTHORED_SYNTHETIC",
+          "shared_with_control": [
+            "recommendations",
+            "constraints",
+            "identity decisions",
+            "provider geography",
+            "candidate pool",
+            "every non-cultural rule"
+          ],
+          "EVIDENCE_COVERAGE_GAIN": {
+            "shipped_items": 68,
+            "with_cultural_evidence": {
+              "treatment": 61,
+              "control": 0
+            },
+            "coverage_treatment": 0.897,
+            "note": "Coverage counts kept items that carry Qloo's query-relative evidence. It is not a statement that those items are better."
+          },
+          "DECISION_DIFFERENCE": {
+            "plans_with_a_different_kept_plan": 0,
+            "items_only_in_treatment": 0,
+            "items_only_in_control": 0
+          },
+          "INDEPENDENTLY_VALIDATED_QUALITY_GAIN": {
+            "plans_treatment_strictly_better": 0,
+            "plans_control_strictly_better": 0,
+            "plans_tied": 50,
+            "oracle_metrics": {
+              "false_accepts_violating_items_shipped": {
+                "treatment": 0,
+                "control": 0
+              },
+              "items_shipped_with_nothing_proving_them": {
+                "treatment": 0,
+                "control": 0
+              },
+              "wrong_identities_shipped": {
+                "treatment": 0,
+                "control": 0
+              },
+              "valid_items_kept": {
+                "treatment": 52,
+                "control": 52
+              },
+              "false_rejects_valid_items_dropped": {
+                "treatment": 3,
+                "control": 3
+              }
+            },
+            "cultural_fit_ground_truth": "NONE_EXISTS_INDEPENDENT_OF_QLOO_AFFINITY"
+          },
+          "CANDIDATE_ASSESSMENT_DIFFERENCES": {
+            "audited_items": 129,
+            "items_whose_verdict_differs": 18,
+            "note": "A rules-only gate cannot tell PASS from REVIEW or UNKNOWN-for-missing-evidence; these are the items whose label changes when the cultural evidence is removed."
+          },
+          "EVIDENCE_SUPPORTED_RANKING": {
+            "items_with_a_cultural_ordering": {
+              "treatment": 101,
+              "control": 0
+            },
+            "note": "An ordering position (a ranking or a discovery order) exists only with cultural evidence. It orders items for display; it decides no hard check."
+          },
+          "VALID_REPAIRS": {
+            "accepted": {
+              "treatment": 16,
+              "control": 16
+            },
+            "accepted_and_valid_by_oracle": {
+              "treatment": 16,
+              "control": 16
+            },
+            "accepted_but_not_valid_by_oracle": {
+              "treatment": 0,
+              "control": 0
+            }
+          },
+          "unknown_frequency": {
+            "audited_items": 129,
+            "treatment": 29,
+            "control": 22,
+            "treatment_rate": 0.225,
+            "control_rate": 0.171,
+            "note": "Items the treatment leaves UNKNOWN beyond the control are those missing cultural evidence or an unresolved taste signal; they are kept, not guessed."
+          },
+          "runtime": {
+            "treatment_local_latency_ms_median": 0.56,
+            "control": "NOT_SEPARATELY_MEASURED",
+            "note": "In-process time of the treatment's own run; the control is derived from the same run, so no separate time exists and none is invented."
+          },
+          "cost": {
+            "calls_per_plan_with_cultural_evidence": 5.18,
+            "calls_per_plan_without": 4.18,
+            "note": "The control skips the common-set ranking request. Its elapsed time is derived from the same run and is not separately measured."
+          },
+          "quality_uplift": "QUALITY_UPLIFT_NOT_ESTABLISHED",
+          "reading": "The cultural evidence in this stratum is authored, so nothing here is evidence about Qloo."
         },
         "gate": {
           "final_status_counts": {

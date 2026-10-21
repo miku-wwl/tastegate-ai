@@ -21,6 +21,11 @@ export function matchesP05Signal(checkpoint: unknown, binding?: P05SignalBinding
   return !!binding && bindings.has(binding) && cp.success && cp.data.signal_entity_id === binding.entityId &&
     cp.data.signal_review_sha256 === binding.reviewSha256 && cp.data.p01_raw_sha256 === binding.p01RawSha256;
 }
+// The same trust check for a later probe's checkpoint that carries the P05 identity fields (P07 sends this signal too).
+export function matchesAcceptedSignal(fields: { signal_entity_id: string; signal_review_sha256: string; p01_raw_sha256: string }, binding?: P05SignalBinding): binding is P05SignalBinding {
+  return !!binding && bindings.has(binding) && fields.signal_entity_id === binding.entityId &&
+    fields.signal_review_sha256 === binding.reviewSha256 && fields.p01_raw_sha256 === binding.p01RawSha256;
+}
 async function boundedPrivate(root: string, parts: string[], cap: number) {
   let path = root;
   for (const part of parts) {

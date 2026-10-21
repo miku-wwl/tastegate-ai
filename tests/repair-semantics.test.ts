@@ -1,7 +1,8 @@
 import { rm } from "node:fs/promises";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAudit, runRecordedAudit, type AuditOptions } from "../src/audit/workflow";
-import { digest, type AuditReport, type Confirmation, type ProviderAuditReport } from "../src/domain/contracts";
+import { assessRepair, CHECKLIST_ITEMS } from "../src/audit/assessment";
+import { digest, type AuditReport, type Confirmation, type ProviderAuditReport, type PublicReference } from "../src/domain/contracts";
 import { AuditReportSchema, ProviderAuditReportSchema } from "../src/domain/report-schema";
 import { getScenario, type ScenarioId } from "../src/fixtures/scenarios";
 import { createFixtureAdapter } from "../src/qloo/fixture-adapter";
@@ -105,13 +106,20 @@ describe("recorded provider data: replacement identity needs a lookup or YOUR co
   const nycDiscovery = { success: true, results: { entities: [{ entity_id: NYC, name: "Authored Midtown Room", type: "urn:entity", subtype: "urn:entity:place", disambiguation: "5 Authored Ave, New York",
     properties: { geocode: { city: "New York", country_code: "US", name: "Authored Midtown" } }, tags: [{ id: "urn:tag:category:place:authored_room", name: "Jazz club", type: "urn:tag:category:place", weight: null }], query: { affinity: 0.7 } }] } };
   let nycRoot = ""; let farRoot = ""; let nycAdapter: ReturnType<typeof createRecordedAdapter>; let farAdapter: ReturnType<typeof createRecordedAdapter>;
+  let nycSet: Awaited<ReturnType<typeof loadRecordedEvidence>>;
+  // An authored stand-in for a page the owner reviewed. No real venue, publisher or page is involved.
+  const reference = (change: Partial<PublicReference> = {}): PublicReference => ({ source: "OFFICIAL_PUBLIC_REFERENCE", publisher: "Authored Venue Press Office",
+    url: "https://example.org/authored-midtown-room", asserted_name: "Authored Midtown Room", asserted_city: "New York", asserted_country: "US",
+    reviewed_utc: "2026-10-21T00:00:00.000Z", review_basis: "OWNER_REVIEW_OF_PUBLIC_PAGE", content_sha256: "a".repeat(64), ...change });
+  const withReference = (set: typeof nycSet, id: string, ref: PublicReference) => createRecordedAdapter(set, { references: new Map([[providerRef("entity", id), ref]]) });
   const ref = (id: string, kind: "entity" | "tag" = "entity") => providerRef(kind, id);
   const select = (target_id: string, id: string, kind: "entity" | "tag" = "entity"): Confirmation => ({ target_id, decision: "select", ref: ref(id, kind) });
   const base = [select("p1", AUTHORED.artist), select("p2", AUTHORED.film), select("p3", AUTHORED.musicTag, "tag"), select("original-1", AUTHORED.venue)];
   const run = (adapter: typeof nycAdapter, confirmations: Confirmation[]) => runRecordedAudit(getRecordedScenarioInput(), adapter, { scenarioId: RECORDED_SCENARIO_ID, insightsPolicy: RECORDED_INSIGHTS_POLICY, confirmations });
   beforeAll(async () => {
     nycRoot = await seedRecordedRoot({ bodies: authoredBodies({ P05: nycDiscovery }) }); farRoot = await seedRecordedRoot();
-    nycAdapter = createRecordedAdapter(await loadRecordedEvidence(nycRoot)); farAdapter = createRecordedAdapter(await loadRecordedEvidence(farRoot));
+    nycSet = await loadRecordedEvidence(nycRoot);
+    nycAdapter = createRecordedAdapter(nycSet); farAdapter = createRecordedAdapter(await loadRecordedEvidence(farRoot));
   });
   afterAll(async () => { await rm(nycRoot, { recursive: true, force: true }); await rm(farRoot, { recursive: true, force: true }); });
 
@@ -125,16 +133,86 @@ describe("recorded provider data: replacement identity needs a lookup or YOUR co
     expect(r.pending_confirmations).toEqual([{ target_id: slot, target_kind: "replacement", lookup_ref: r.repairs[0]!.discovery_evidence_refs[0], candidate_ids: [ref(NYC)] }]);
     expect(r.final_candidate_ids).not.toContain(r.repairs[0]!.replacement_candidate_id); // still not offered as a verified result
   });
-  it("after you confirm it, the same place is verified on the provider's own geography: REPAIR_VERIFIED", async () => {
+  it("after you confirm it, the place passes every check but is NOT verified: your click is a decision, not a second source", async () => {
     const r = ProviderAuditReportSchema.parse(await run(nycAdapter, [...base, select(slot, NYC)]));
     const repair = r.repairs[0]!; const discovery = r.evidence.find((e) => e.snapshot.kind === "discover_places")!;
-    expect(repair).toMatchObject({ accepted: true, identity_basis: "user_confirmation" });
+    expect(repair).toMatchObject({ accepted: false, identity_basis: "user_confirmation", corroboration: null });
     expect(repair.revalidation).toMatchObject({ resolution: "resolved", hard_constraints: "pass", verdict: "PASS", entity_id: ref(NYC), resolution_evidence_ref: discovery.evidence_id,
       cultural_relevance: { query_ref: discovery.evidence_id, ordinal_rank: 1 } });
     expect(repair.revalidation.findings).toContainEqual(expect.objectContaining({ code: "IDENTITY_USER_CONFIRMED", state: "pass" }));
-    expect(outcomes(r)).toEqual([["original-2", "REPAIR_VERIFIED", "REPLACEMENT_VERIFIED"]]);
-    expect(r.pending_confirmations).toEqual([]); expect(r.final_candidate_ids).toContain(repair.replacement_candidate_id);
+    expect(outcomes(r)).toEqual([["original-2", "EVIDENCE_INSUFFICIENT", "REPLACEMENT_NEEDS_INDEPENDENT_CORROBORATION"]]);
+    expect(r.pending_confirmations).toEqual([]); expect(r.final_candidate_ids).not.toContain(repair.replacement_candidate_id);
+    expect(r.final_status).toBe(r.before_status); // the original is not presented as repaired
     expect(r.usage).toMatchObject({ qloo_dispatches: 0 }); // recorded data, never a fresh request
+    expect(assessRepair(r, repair)).toMatchObject({ hard_constraint_validity: "VALID", cultural_evidence_support: "SUPPORTED", identity_corroboration: "USER_CONFIRMATION_ONLY",
+      verified: false, first_unmet: "BRANCH_CORROBORATION", synthetic_success: false, evidence_label: "RECORDED_LIVE" });
+  });
+  describe("a registered official public reference is the second source", () => {
+    it("agreeing with the provider record, it verifies the repair without any click", async () => {
+      const r = ProviderAuditReportSchema.parse(await run(withReference(nycSet, NYC, reference()), base));
+      const repair = r.repairs[0]!;
+      expect(repair).toMatchObject({ accepted: true, identity_basis: "official_public_reference", corroboration: expect.objectContaining({ publisher: "Authored Venue Press Office" }) });
+      expect(repair.revalidation.findings).toContainEqual(expect.objectContaining({ code: "IDENTITY_OFFICIAL_REFERENCE", state: "pass" }));
+      expect(repair.revalidation.findings.some((f) => f.code === "IDENTITY_USER_CONFIRMED")).toBe(false);
+      expect(outcomes(r)).toEqual([["original-2", "REPAIR_VERIFIED", "REPLACEMENT_VERIFIED"]]); expect(r.pending_confirmations).toEqual([]);
+      const a = assessRepair(r, repair);
+      expect(a).toMatchObject({ hard_constraint_validity: "VALID", cultural_evidence_support: "SUPPORTED", identity_corroboration: "OFFICIAL_PUBLIC_REFERENCE", verified: true, first_unmet: null, synthetic_success: false });
+      expect(a.checklist.map((c) => c.item)).toEqual([...CHECKLIST_ITEMS]); expect(a.checklist.every((c) => c.state === "PASS" || c.state === "NOT_APPLICABLE")).toBe(true);
+      expect(a.checklist.find((c) => c.item === "FRESHNESS")!.note).toMatch(/dated 20[0-9]{2}-[0-9]{2}-[0-9]{2}/);
+    });
+    it("it outranks a click, and a click on top of it changes nothing", async () => {
+      const r = ProviderAuditReportSchema.parse(await run(withReference(nycSet, NYC, reference()), [...base, select(slot, NYC)]));
+      expect(r.repairs[0]).toMatchObject({ accepted: true, identity_basis: "official_public_reference" }); expect(outcomes(r)).toEqual([["original-2", "REPAIR_VERIFIED", "REPLACEMENT_VERIFIED"]]);
+    });
+    it.each([["another city", { asserted_city: "Boston" }], ["another country", { asserted_country: "GB" }], ["another venue name", { asserted_name: "Authored Other Room" }]])(
+      "contradicting the provider record (%s) is an integrity rejection, even after you confirmed the place", async (_, change) => {
+        const r = ProviderAuditReportSchema.parse(await run(withReference(nycSet, NYC, reference(change)), [...base, select(slot, NYC)]));
+        const repair = r.repairs[0]!;
+        expect(repair.accepted).toBe(false); expect(repair.revalidation.verdict).toBe("BLOCKED");
+        expect(repair.revalidation.findings).toContainEqual(expect.objectContaining({ code: "FACT_CONFLICT", category: "integrity", state: "fail" }));
+        expect(outcomes(r)).toEqual([["original-2", "REPAIR_REJECTED", "REPLACEMENT_FAILED_HARD_CHECK"]]);
+        const a = assessRepair(r, repair); expect(a).toMatchObject({ hard_constraint_validity: "INVALID", verified: false, first_unmet: "BRANCH_CORROBORATION" });
+        expect(a.checklist.find((c) => c.item === "CONSISTENCY")!.state).toBe("FAIL");
+      });
+    it("a reference cannot fill a fact the provider did not give: with no provider city it neither agrees nor conflicts, so the place still awaits your confirmation", async () => {
+      const root = await seedRecordedRoot({ bodies: authoredBodies({ P05: { ...nycDiscovery, results: { entities: [{ ...nycDiscovery.results.entities[0]!, properties: { geocode: { country_code: "US" } } }] } } }) });
+      try {
+        const set = await loadRecordedEvidence(root); const r = ProviderAuditReportSchema.parse(await run(withReference(set, NYC, reference()), base));
+        expect(r.repairs[0]).toMatchObject({ accepted: false, identity_basis: null, corroboration: expect.anything() });
+        expect(r.repairs[0]!.revalidation.findings.some((f) => f.code === "FACT_CONFLICT")).toBe(false);
+        expect(outcomes(r)).toEqual([["original-2", "EVIDENCE_INSUFFICIENT", "REPLACEMENT_AWAITING_IDENTITY_CONFIRMATION"]]);
+      } finally { await rm(root, { recursive: true, force: true }); }
+    });
+    it("a reference registered for a different identity is never consulted", async () => {
+      const r = ProviderAuditReportSchema.parse(await run(withReference(nycSet, AUTHORED.venue, reference()), base));
+      expect(r.repairs[0]).toMatchObject({ accepted: false, identity_basis: null, corroboration: null });
+      expect(outcomes(r)).toEqual([["original-2", "EVIDENCE_INSUFFICIENT", "REPLACEMENT_AWAITING_IDENTITY_CONFIRMATION"]]);
+    });
+    it("synthetic fixtures never carry a reference, and the validator rejects one", async () => {
+      const r = await fixture("wrong-city-repair"); expect(r.repairs[0]!.corroboration).toBeNull();
+      const forged = structuredClone(r); forged.repairs[0]!.corroboration = reference();
+      expect(AuditReportSchema.safeParse(forged).success).toBe(false);
+    });
+  });
+  it("the validator re-derives acceptance and the new findings: forged or inconsistent repairs are rejected", async () => {
+    const confirmed = await run(nycAdapter, [...base, select(slot, NYC)]); const referenced = await run(withReference(nycSet, NYC, reference()), base);
+    const edit = (r: ProviderAuditReport, change: (r: ProviderAuditReport) => void) => { const x = structuredClone(r); change(x); return ProviderAuditReportSchema.safeParse(x).success; };
+    expect(edit(confirmed, () => {})).toBe(true); expect(edit(referenced, () => {})).toBe(true);
+    expect(edit(confirmed, (r) => { r.repairs[0]!.accepted = true; })).toBe(false); // a click alone cannot be promoted to VERIFIED
+    expect(edit(confirmed, (r) => { r.repair_outcomes[0] = { replaces: "original-2", status: "REPAIR_VERIFIED", reason: "REPLACEMENT_VERIFIED", replacement_candidate_id: r.repairs[0]!.replacement_candidate_id }; })).toBe(false);
+    expect(edit(referenced, (r) => { r.repairs[0]!.accepted = false; })).toBe(false); // nor can a corroborated PASS be quietly demoted
+    expect(edit(referenced, (r) => { r.repairs[0]!.corroboration = null; })).toBe(false);
+    expect(edit(referenced, (r) => { r.repairs[0]!.identity_basis = "user_confirmation"; })).toBe(false);
+    expect(edit(referenced, (r) => { r.repairs[0]!.corroboration!.asserted_city = "Boston"; })).toBe(false); // an edited reference no longer matches the findings
+    expect(edit(referenced, (r) => { r.repairs[0]!.revalidation.findings = r.repairs[0]!.revalidation.findings.filter((f) => f.code !== "IDENTITY_OFFICIAL_REFERENCE"); })).toBe(false);
+    expect(edit(confirmed, (r) => { r.repairs[0]!.corroboration = reference(); })).toBe(false); // a reference on a click-only repair contradicts its findings
+  });
+  it("a high Qloo ranking never overrides a proven geographic violation: cultural support and hard validity are reported separately", async () => {
+    const r = ProviderAuditReportSchema.parse(await run(farAdapter, [...base, select(slot, AUTHORED.far)])); const a = assessRepair(r, r.repairs[0]!);
+    expect(r.repairs[0]!.revalidation.cultural_relevance).toMatchObject({ ordinal_rank: 1 }); // Qloo ranks it FIRST ...
+    expect(a).toMatchObject({ cultural_evidence_support: "SUPPORTED", hard_constraint_validity: "INVALID", verified: false }); // ... and it is still invalid
+    expect(a.checklist.filter((c) => c.state === "FAIL").map((c) => c.item)).toEqual(expect.arrayContaining(["CITY", "COUNTRY"]));
+    expect(a.first_unmet).toBe("CITY");
   });
   it("declining it is final: REPAIR_REJECTED by you, nothing pending, nothing verified", async () => {
     const r = ProviderAuditReportSchema.parse(await run(nycAdapter, [...base, { target_id: slot, decision: "skip" }]));

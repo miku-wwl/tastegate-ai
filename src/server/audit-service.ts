@@ -7,7 +7,7 @@ import { normalizeCustomInput, type CustomInputIssue } from "../domain/custom-in
 import { ScenarioIdSchema, getScenario, scenarioLabels, type ScenarioId } from "../fixtures/scenarios";
 import { createFixtureAdapter } from "../qloo/fixture-adapter";
 import { openAuthorizedLiveSession, type LiveSessionDisabled } from "../qloo/live-adapter-authorized";
-import { loadLiveGrant, readLiveBudget } from "../qloo/live-grant";
+import { loadLiveGrant, readLiveBudget, type GrantEnvironment } from "../qloo/live-grant";
 import type { LiveSend } from "../qloo/live-transport";
 import { createEmptyRecordedAdapter, createRecordedAdapter, recordedCoverage, type VerifiedRecordings } from "../qloo/recorded-adapter";
 import type { QlooServerConfig } from "../qloo/server-config";
@@ -31,6 +31,8 @@ export type AuditServiceDeps = {
   now?: () => number;
   // Operator kill switch (TASTEGATE_DISABLE_LIVE=1): live is refused before anything else, whatever credential or grant exists.
   liveDisabled?: () => boolean;
+  // Which environment this server runs in; a grant approved for another environment is invalid here (default DEVELOPMENT).
+  environment?: GrantEnvironment;
 };
 const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const fail = (status: number, error: string, extra: Record<string, unknown> = {}) => Response.json({ error, ...extra }, { status, headers });
@@ -132,7 +134,7 @@ export function createAuditService(deps: AuditServiceDeps) {
     if (deps.liveDisabled?.()) return locked("LIVE_DISABLED");
     // The credential VALUE is never read here: only whether a live configuration loads.
     try { if (deps.liveConfig().mode !== "live") return locked("CREDENTIAL_NOT_CONFIGURED"); } catch { return locked("CREDENTIAL_NOT_CONFIGURED"); }
-    const grant = await loadLiveGrant(deps.projectRoot, now());
+    const grant = await loadLiveGrant(deps.projectRoot, now(), deps.environment);
     if (!grant.ok) return locked(grant.reason);
     let budget; try { budget = await readLiveBudget(deps.projectRoot, grant.grant); } catch { return locked("LEDGER_UNAVAILABLE"); }
     const remainingRuns = grant.grant.max_runs - budget.runs_used; const remainingRequests = grant.grant.max_requests - budget.requests_reserved;
@@ -194,7 +196,7 @@ export function createAuditService(deps: AuditServiceDeps) {
     if (parsed.data.live_ack !== LIVE_ACK) return fail(403, "LIVE_ACK_REQUIRED");
     if (!sameOrigin(request)) return fail(403, "CROSS_ORIGIN_REFUSED");
     if (!liveAttemptAllowed()) return fail(429, "LIVE_RATE_LIMITED");
-    const session = await openAuthorizedLiveSession({ projectRoot: deps.projectRoot, config: deps.liveConfig, send: deps.send, now });
+    const session = await openAuthorizedLiveSession({ projectRoot: deps.projectRoot, config: deps.liveConfig, send: deps.send, now, environment: deps.environment });
     if (session.status !== "AVAILABLE") return fail(LIVE_STATUS[session.reason], "LIVE_UNAVAILABLE", { reason: session.reason });
     try { return Response.json(await runAuthorizedLiveAudit(chosen.input, session.adapter, options), { headers }); }
     catch { return fail(500, "LIVE_AUDIT_FAILED"); }

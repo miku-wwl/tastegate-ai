@@ -1,0 +1,38 @@
+# Everything below stays OUT of the Docker build context. The context is what a build daemon (possibly a remote one) receives, so the
+# owner's private evidence, credentials and local artifacts must never be in it. scripts/deploy-safety.mjs checks these rules against
+# planted canaries; do not weaken them without updating that check.
+
+# --- private by nature -------------------------------------------------------------------------------------------------
+**/private
+**/.env
+**/.env.*
+**/.artifacts
+**/.cache
+**/test-results
+**/playwright-report
+**/coverage
+**/.git
+**/.runtime
+**/.venv
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.log
+**/*.pem
+**/*.key
+**/id_rsa*
+
+# --- regenerated inside the image --------------------------------------------------------------------------------------
+**/node_modules
+**/.next
+**/*.tsbuildinfo
+
+# --- not needed to build or run ----------------------------------------------------------------------------------------
+tests
+docs
+deploy
+Dockerfile
+.dockerignore
+.gitignore
+.gitattributes
+AGENTS.md
+TasteGate_AI_Qloo_Hackathon_Prize_Strategy_*.md

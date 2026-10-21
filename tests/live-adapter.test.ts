@@ -6,7 +6,8 @@ import { runAuthorizedLiveAudit, runRecordedAudit } from "../src/audit/workflow"
 import type { Confirmation } from "../src/domain/contracts";
 import { ProviderAuditReportSchema } from "../src/domain/report-schema";
 import { openAuthorizedLiveSession, type LiveSession } from "../src/qloo/live-adapter-authorized";
-import { LIVE_OPERATIONS, LiveGrantSchema, createLiveGrant, loadLiveGrant, ownerReplyAuthorizesLive, revokeLiveGrant, startLiveRun, validGrantWindow, type LiveGrant, type LiveOperation } from "../src/qloo/live-grant";
+import { LiveGrantSchema, loadLiveGrant, revokeLiveGrant, startLiveRun, validGrantWindow, type LiveGrant, type LiveOperation } from "../src/qloo/live-grant";
+import { approvedGrant } from "./helpers/live-grant";
 import { LIVE_ORIGIN, sendNative, type LiveSend } from "../src/qloo/live-transport";
 import { providerRef } from "../src/qloo/provider-ref";
 import { QlooServerConfig } from "../src/qloo/server-config";
@@ -19,10 +20,7 @@ const config = () => QlooServerConfig.load({ QLOO_MODE: "live", QLOO_API_KEY: KE
 const ref = (id: string) => providerRef("entity", id);
 const ctx = (signal: AbortSignal = new AbortController().signal) => ({ runId: "authored", callId: "authored", signal });
 async function freshRoot() { await mkdir(".artifacts", { recursive: true }); const root = await mkdtemp(resolve(".artifacts/live-test-")); roots.push(root); await mkdir(join(root, "private"), { mode: 0o700 }); return root; }
-const ALL = [...LIVE_OPERATIONS];
-async function grant(root: string, change: Partial<Parameters<typeof createLiveGrant>[1]> = {}) {
-  return createLiveGrant(root, { ownerReply: "Authorize one LIVE session", gateId: "gate-1", minutes: 15, maxRequests: 14, maxRuns: 3, operations: ALL, ...change });
-}
+const grant = approvedGrant;
 async function session(root: string, send: LiveSend, now?: () => number) { const s = await openAuthorizedLiveSession({ projectRoot: root, config, send, now }); if (s.status !== "AVAILABLE") throw new Error("session unavailable: " + s.reason); return s; }
 const open: LiveSession[] = [];
 beforeEach(() => { vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network is forbidden in this suite")); vi.spyOn(https, "request").mockImplementation(() => { throw new Error("Network is forbidden in this suite"); }); });
@@ -41,27 +39,20 @@ describe("owner grant: the only authority for a live request", () => {
     for (const cfg of [() => QlooServerConfig.load({}), () => QlooServerConfig.load({ QLOO_API_KEY: KEY }), () => { throw new Error("bad"); }])
       expect(await openAuthorizedLiveSession({ projectRoot: root, config: cfg as never, send: world() })).toEqual({ status: "DISABLED", reason: "CREDENTIAL_NOT_CONFIGURED" });
   });
-  it("creates exactly one bounded grant from the owner's explicit LIVE reply and never replaces a usable one", async () => {
+  it("creates exactly one bounded grant from the owner's exact approval and never replaces a usable one", async () => {
     const root = await freshRoot(); const created = await grant(root, { maxRequests: 6, maxRuns: 2, operations: ["entity_lookup", "rank_places"] });
     expect(created).toMatchObject({ status: "CREATED", max_requests: 6, max_runs: 2, operations: ["entity_lookup", "rank_places"] });
     const loaded = await loadLiveGrant(root); expect(loaded.ok).toBe(true);
-    if (loaded.ok) expect(LiveGrantSchema.parse(loaded.grant)).toMatchObject({ per_request_timeout_ms: 4000, max_response_bytes: 262144, approval: "AUTHORIZE_BOUNDED_LIVE_SESSION" });
-    await expect(grant(root)).rejects.toThrow("LIVE_GRANT_CREATION_FAILED");
+    if (loaded.ok) expect(LiveGrantSchema.parse(loaded.grant)).toMatchObject({ per_request_timeout_ms: 4000, max_response_bytes: 262144, max_concurrency: 1, environment: "DEVELOPMENT", approval: "AUTHORIZE_BOUNDED_LIVE_SESSION" });
+    await expect(grant(root)).rejects.toThrow("LIVE_PROPOSAL_FAILED");
     expect((await revokeLiveGrant(root)).status).toBe("REVOKED");
     expect(await loadLiveGrant(root)).toEqual({ ok: false, reason: "GRANT_REVOKED" });
     await grant(root); const files = await readdir(join(root, "private/qloo-live")); // the revoked grant is kept as history, never deleted
     expect(files.filter((f) => f.startsWith("grant-")).length).toBe(1); expect(files).toContain("grant.json");
   });
-  it.each([["no LIVE word", "go ahead"], ["names a probe", "approve LIVE P06"], ["empty", ""], ["too long", "LIVE " + "x".repeat(600)]])("rejects an owner reply with %s", async (_, reply) => {
-    expect(ownerReplyAuthorizesLive(reply)).toBe(false); await expect(grant(await freshRoot(), { ownerReply: reply })).rejects.toThrow();
-  });
-  it.each([{ minutes: 0 }, { minutes: 61 }, { minutes: 1.5 }, { maxRequests: 0 }, { maxRequests: 15 }, { maxRuns: 6 }, { operations: [] as LiveOperation[] }, { operations: ["entity_lookup", "entity_lookup"] as LiveOperation[] }, { gateId: "bad gate" }])("rejects an out-of-bounds grant %j", async (change) => {
-    await expect(grant(await freshRoot(), change)).rejects.toThrow("LIVE_GRANT_CREATION_FAILED");
-  });
-  it("a refused creation leaves no trace on disk", async () => {
+  it.each([{ minutes: 0 }, { minutes: 61 }, { minutes: 1.5 }, { maxRequests: 0 }, { maxRequests: 15 }, { maxRuns: 6 }, { operations: [] as LiveOperation[] }, { operations: ["entity_lookup", "entity_lookup"] as LiveOperation[] }, { environment: "PRODUCTION_LIVE" as const }])("rejects an out-of-bounds grant %j before anything is written", async (change) => {
     const root = await freshRoot();
-    for (const change of [{ maxRequests: 15 }, { maxRuns: 0 }, { minutes: 61 }, { gateId: "bad gate" }, { operations: [] as LiveOperation[] }, { ownerReply: "no authority here" }])
-      await expect(grant(root, change)).rejects.toThrow("LIVE_GRANT_CREATION_FAILED");
+    await expect(grant(root, change)).rejects.toThrow("LIVE_PROPOSAL_FAILED");
     await expect(readdir(join(root, "private/qloo-live"))).rejects.toMatchObject({ code: "ENOENT" });
   });
   it("expires, is not valid before its start, and cannot be widened by editing the file", async () => {

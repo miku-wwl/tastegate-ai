@@ -4,7 +4,7 @@ import {
 } from "./contracts";
 import {
   candidateVerdict, checkConstraints, checkUnconfirmedConstraints, deriveRepairOutcomes, hardState, insightsSignals, lookupMatches, pendingReplacementConfirmations,
-  preferenceCandidates, repairTargets, replacementDecision, replacementTarget, reportSummary, resolveOriginal, resolvePreference, resolveReplacement,
+  preferenceCandidates, referenceConflicts, repairAccepted, repairTargets, replacementDecision, replacementTarget, reportSummary, resolveOriginal, resolvePreference, resolveReplacement,
 } from "../audit/rules";
 
 type Shape = AuditReport | ProviderAuditReport;
@@ -160,9 +160,11 @@ function validateGraph(r: Shape, reject: (message: string) => void): void {
       if (proposed && lookupQuery(lookup) !== proposed.entity.name) reject("Revalidation lookup belongs to a different candidate");
       if (proposed && indexOf(repair.lookup_evidence_ref) <= indexOf(proposed.ref)) reject("Replacement lookup precedes its discovery");
       const decision = replacementDecision(decisions.get(replacementTarget(repair.replaces)), repair.proposed_entity_id);
-      const expected = proposed ? resolveReplacement(mode, lookup, proposed.entity, decision) : { resolution: "unresolved" as const, entity: null, basis: null };
+      // A registered public reference is trusted host input (like a capture's integrity claim); the validator checks that it is used consistently.
+      if (provider === null && repair.corroboration !== null) reject("A synthetic repair cannot carry a public reference");
+      const expected = proposed ? resolveReplacement(mode, lookup, proposed.entity, decision, repair.corroboration) : { resolution: "unresolved" as const, entity: null, basis: null };
       if (a.resolution !== expected.resolution || repair.identity_basis !== expected.basis) reject("Resolution contradicts lookup evidence");
-      expectedResolutionRef = expected.basis === "user_confirmation" ? proposed!.ref : repair.lookup_evidence_ref;
+      expectedResolutionRef = expected.basis === "user_confirmation" || expected.basis === "official_public_reference" ? proposed!.ref : repair.lookup_evidence_ref;
       if (a.resolution_evidence_ref !== expectedResolutionRef) reject("Resolution evidence reference was forged");
       entity = expected.entity && expected.entity.id === a.entity_id ? expected.entity : null; basis = expected.basis;
       if (a.resolution === "resolved" && !entity) reject("Resolved identity lacks matching lookup");
@@ -184,6 +186,12 @@ function validateGraph(r: Shape, reject: (message: string) => void): void {
     const userConfirmed = a.findings.filter((f) => f.code === "IDENTITY_USER_CONFIRMED");
     if (userConfirmed.length !== (basis === "user_confirmation" ? 1 : 0) ||
         userConfirmed.some((f) => f.state !== "pass" || digest(f.evidence_refs) !== digest([inputRef]))) reject("User-confirmation finding contradicts the identity basis");
+    const officialRef = a.findings.filter((f) => f.code === "IDENTITY_OFFICIAL_REFERENCE");
+    if (officialRef.length !== (basis === "official_public_reference" ? 1 : 0) || officialRef.some((f) => f.state !== "pass" || (proposed && digest(f.evidence_refs) !== digest([proposed.ref]))))
+      reject("Official-reference finding contradicts the identity basis");
+    const conflicts = a.findings.filter((f) => f.code === "FACT_CONFLICT");
+    const expectConflict = !!(repair && repair.corroboration && proposed && referenceConflicts(repair.corroboration, proposed.entity));
+    if (conflicts.length !== (expectConflict ? 1 : 0) || conflicts.some((f) => f.state !== "fail" || f.category !== "integrity")) reject("Reference-conflict finding contradicts the evidence");
     const expectedChecks = !entity && repair && proposed ? checkUnconfirmedConstraints(r.input, proposed.entity, proposed.ref, inputRef, mode)
       : checkConstraints(r.input, entity, expectedResolutionRef, inputRef, mode);
     if (a.hard_constraints !== hardState(expectedChecks)) reject("Hard-check summary contradicts captured facts");
@@ -222,6 +230,8 @@ function validateGraph(r: Shape, reject: (message: string) => void): void {
     const proposed = discoveryEntity(repair);
     if (!proposed) reject("Replacement lacks discovery provenance");
     if (repair.accepted && (unresolved.length > 0 || repair.revalidation.resolution !== "resolved")) reject("Replacement was not independently revalidated");
+    // The ONE acceptance rule, re-derived: every gate passed AND the identity rests on a second source (never on a click alone).
+    if (repair.accepted !== repairAccepted(repair.revalidation.verdict, repair.identity_basis)) reject("Acceptance contradicts the audit and its identity basis");
   }
   const acceptedIds = r.repairs.filter((x) => x.accepted).map((x) => x.revalidation.entity_id);
   if (new Set(acceptedIds).size !== acceptedIds.length || acceptedIds.some((id) => r.original_audits.some((a) => a.entity_id === id))) reject("Duplicate replacement entity");

@@ -1,9 +1,11 @@
+import { summarizeAblation, type EvidenceKind } from "./ablation-summary";
 import { aggregate, pairedSigns, runPaired, type PairedResult } from "./paired";
 import { POLICIES } from "./baselines";
 import { errorResult, scoreCase, summarize, type CaseResult, type EvalCase, type Stratum } from "./harness";
 
 export type PairedRow = PairedResult & { stratum: Stratum; category: string };
 export const STRATA: readonly Stratum[] = ["SYNTHETIC", "SYNTHETIC_HOLDOUT", "RECORDED_LIVE", "AUTHORIZED_LIVE"];
+const EVIDENCE_KIND: Record<Stratum, EvidenceKind> = { SYNTHETIC: "AUTHORED_SYNTHETIC", SYNTHETIC_HOLDOUT: "AUTHORED_SYNTHETIC", RECORDED_LIVE: "RECORDED_QLOO", AUTHORIZED_LIVE: "LIVE_QLOO" };
 export type Evaluated = { results: CaseResult[]; paired: PairedRow[] };
 
 // Runs every case through the gate (scored against its gold or invariants) and, where meaningful, through both baselines.
@@ -40,6 +42,8 @@ export function summarizePaired(paired: PairedRow[], strata: readonly Stratum[] 
       baseline_violating_shipped: { AS_PROPOSED: sum("AS_PROPOSED", "shipped_violating"), TOP_HIT_UNCHECKED: sum("TOP_HIT_UNCHECKED", "shipped_violating") } };
     return [stratum, { status: "RUN", plans: rows.length, scored_plans: scored.length, paused_for_human_decision: paused, paused_plans: pausedPlans, policies,
       paired_signs: { vs_AS_PROPOSED: signs("AS_PROPOSED"), vs_TOP_HIT_UNCHECKED: signs("TOP_HIT_UNCHECKED") },
+      // What does Qloo's cultural evidence add? The same gate with and without it, scored by the same independent oracle.
+      cultural_evidence_ablation: summarizeAblation(scored, EVIDENCE_KIND[stratum]),
       gate: { final_status_counts: finals, final_items: finalItems, final_items_with_taste_evidence: withEvidence,
         taste_evidence_coverage: finalItems ? Math.round((withEvidence / finalItems) * 1000) / 1000 : "N/A" } }];
   }));

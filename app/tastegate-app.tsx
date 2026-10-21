@@ -6,6 +6,7 @@ import type { AnyAuditReport, AuditInput, Confirmation } from "../src/domain/con
 import { LIVE_ACK } from "../src/domain/protocol";
 import { clientIssues, emptyForm, formToInput, type FieldIssue, type FormState } from "./custom-form";
 import { describeProblem, type RunProblem } from "./run-errors";
+import { GuideCard, HowItWorks } from "./screens/guide";
 import { InputScreen, type Plan, type Source } from "./screens/input-screen";
 import { AuditScreen, CompareScreen, IdentityScreen, RepairScreen } from "./screens/result-screens";
 import { SCREENS, isProvider, reachableScreens, screenAfterRun, statusText, type Screen } from "./view-model";
@@ -23,7 +24,7 @@ export default function TasteGateApp() {
   const [source, setSource] = useState<Source>("recorded"); const [liveAck, setLiveAck] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [formIssues, setFormIssues] = useState<FieldIssue[]>([]); const [problem, setProblem] = useState<RunProblem | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false); const [guided, setGuided] = useState(false);
   const heading = useRef<HTMLHeadingElement | null>(null); const firstScreen = useRef(true);
 
   useEffect(() => {
@@ -69,7 +70,14 @@ export default function TasteGateApp() {
   // Follow-up rounds repeat the same request with the user's decisions added; they stay where the decision was made.
   const confirmIdentities = (c: Confirmation[]) => { if (runBody) void post(runBody, c, screenAfterRun); };
   const confirmReplacement = (c: Confirmation[]) => { if (runBody) void post(runBody, c, () => 4); };
-  function restart() { setReport(null); setRunBody(null); setProblem(null); setLiveAck(false); setScreen(1); }
+  function restart() { setReport(null); setRunBody(null); setProblem(null); setLiveAck(false); setGuided(false); setScreen(1); }
+  // The guided demo always uses the authored synthetic "wrong city -> validated repair" sample: no provider data, no setup, no network request to Qloo.
+  function startGuided() {
+    const sample = catalog?.scenarios.find((s) => s.id === "wrong-city-repair" && s.mode === "fixture"); if (!sample) return;
+    setPlan({ kind: "scenario", id: sample.id }); setSource("recorded"); setLiveAck(false); setReport(null); setGuided(true);
+    void post({ scenario: sample.id }, undefined, () => 3);
+  }
+  const guideStep = guided && report && screen >= 3 ? (screen - 2) as 1 | 2 | 3 : null;
 
   const live = catalog?.live_gate.status === "AVAILABLE";
   return <>
@@ -89,6 +97,7 @@ export default function TasteGateApp() {
         <h1>Don’t just generate recommendations.<br /><span className="hero-accent">Audit them, repair them, verify the evidence.</span></h1>
         <p className="lede">TasteGate checks an AI agent’s plan against Qloo taste data and your hard constraints, repairs only what fails, and re-checks every replacement.
           When it cannot prove something, it says so.</p>
+        <HowItWorks onStartGuide={catalog ? startGuided : undefined} busy={busy} />
       </section>}
 
       <nav className="stepper" aria-label="Progress"><ol>{SCREENS.map((s) => {
@@ -105,6 +114,7 @@ export default function TasteGateApp() {
       {catalog && screen === 1 && <InputScreen catalog={catalog} plan={plan} onPlan={choosePlan} source={source} onSource={(s) => { setSource(s); setLiveAck(false); }} liveAck={liveAck} onLiveAck={setLiveAck}
         form={form} onForm={(f) => { setForm(f); if (formIssues.length) setFormIssues([]); }} formIssues={formIssues} problem={problem} busy={busy} onRun={runFromInput} headingRef={heading} />}
       {catalog && report && screen === 2 && <IdentityScreen report={report} headingRef={heading} problem={problem} go={go} busy={busy} onSubmit={confirmIdentities} />}
+      {guideStep && <GuideCard step={guideStep} onBack={() => go(screen === 3 ? 1 : (screen - 1) as Screen)} onNext={() => { if (screen === 5) setGuided(false); else go((screen + 1) as Screen); }} onExit={() => setGuided(false)} />}
       {catalog && report && screen === 3 && <AuditScreen report={report} headingRef={heading} problem={problem} go={go} />}
       {catalog && report && screen === 4 && <RepairScreen report={report} headingRef={heading} problem={problem} go={go} busy={busy} onSubmit={confirmReplacement} />}
       {catalog && report && screen === 5 && <CompareScreen report={report} headingRef={heading} problem={problem} go={go} onRestart={restart} />}

@@ -15,6 +15,9 @@ import { type P05Checkpoint } from "./p05-profile";
 import { inspectAcceptedP05Signal, matchesP05Signal, type P05SignalBinding } from "./p05-signal";
 import { type P06Checkpoint } from "./p06-profile";
 import { inspectAcceptedP06Shortlist, matchesP06Shortlist, type P06ShortlistBinding } from "./p06-shortlist";
+import { type P07Checkpoint } from "./p07-profile";
+import { verifyP07Consent } from "./p07-consent";
+import { matchesP07Signal } from "./p07-signal";
 import { loadLocalP01Config } from "./p01-local-env";
 
 async function checkedDirectory(projectRoot: string, probe: ExecutableProbe): Promise<string> {
@@ -62,7 +65,7 @@ async function ledger(attempts: string, probe: ExecutableProbe, ownedLock?: stri
   if (legacy) throw new Error("LEGACY_ATTEMPT_REVIEW_REQUIRED");
   const children = await readdir(attempts, { withFileTypes: true });
   if (children.length > 1000) throw new Error("LEDGER_REVIEW_REQUIRED");
-  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint; summary: RawProbeSummary | null }> = [];
+  const records: Array<{ checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint | P07Checkpoint; summary: RawProbeSummary | null }> = [];
   for (const child of children) {
     if (!child.isDirectory() || child.isSymbolicLink() || !def.checkpointSchema.shape.attempt_id.safeParse(child.name).success)
       throw new Error("LEDGER_REVIEW_REQUIRED");
@@ -78,6 +81,9 @@ async function ledger(attempts: string, probe: ExecutableProbe, ownedLock?: stri
         record.profile_revision !== def.profile.revision || record.max_response_bytes !== def.maxResponseBytes ||
         !def.profileSchema.safeParse(record.profile).success)) throw new Error("LEDGER_PROFILE_VERSION_MISMATCH");
     if (probe === "P06" && (record.record_revision !== "tastegate.probe-attempt.v5" ||
+        record.profile_revision !== def.profile.revision || record.max_response_bytes !== def.maxResponseBytes ||
+        !def.profileSchema.safeParse(record.profile).success)) throw new Error("LEDGER_PROFILE_VERSION_MISMATCH");
+    if (probe === "P07" && (record.record_revision !== "tastegate.probe-attempt.v6" ||
         record.profile_revision !== def.profile.revision || record.max_response_bytes !== def.maxResponseBytes ||
         !def.profileSchema.safeParse(record.profile).success)) throw new Error("LEDGER_PROFILE_VERSION_MISMATCH");
     if (checkpoint.attempt_id !== child.name) throw new Error("LEDGER_REVIEW_REQUIRED");
@@ -130,7 +136,7 @@ export async function inspectHistoricalP03ForRecovery(projectRoot: string) {
       history.last_attempt_id !== HISTORICAL_P03_ATTEMPT) throw new Error("HISTORICAL_P03_REVIEW_REQUIRED");
   return readHistoricalP03(await checkedDirectory(projectRoot, "P03"));
 }
-export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint, source: SourceRecord | null = null, binding?: ProbeBinding): ProbeStore {
+export function createPrivateProbeStore(projectRoot: string, probe: ExecutableProbe, checkpoint: P01Checkpoint | P02Checkpoint | P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint | P07Checkpoint, source: SourceRecord | null = null, binding?: ProbeBinding): ProbeStore {
   const def = probeDefinition(probe);
   const id = checkpoint.attempt_id; let reserved: string | null = null; let lockPath: string | null = null; let globalLock: string | null = null;
   async function releaseLock() {
@@ -155,6 +161,12 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
           !matchesP05Signal(checkpoint, await inspectAcceptedP05Signal(projectRoot)))) throw new Error("P05_SIGNAL_IDENTITY_REVIEW_REQUIRED");
       if (probe === "P06" && (!matchesP06Shortlist(checkpoint, binding as P06ShortlistBinding | undefined) ||
           !matchesP06Shortlist(checkpoint, await inspectAcceptedP06Shortlist(projectRoot)))) throw new Error("P06_SHORTLIST_REVIEW_REQUIRED");
+      // P07: the artist identity AND the owner's consent (receipt, consumed offer, request hash) are re-verified at the durable reservation.
+      if (probe === "P07") {
+        const signal = await inspectAcceptedP05Signal(projectRoot);
+        if (!matchesP07Signal(checkpoint, binding as P05SignalBinding | undefined) || !matchesP07Signal(checkpoint, signal)) throw new Error("P05_SIGNAL_IDENTITY_REVIEW_REQUIRED");
+        if (!await verifyP07Consent(projectRoot, checkpoint as P07Checkpoint, signal)) throw new Error("P07_CONSENT_REVIEW_REQUIRED");
+      }
       const attempts = await checkedDirectory(projectRoot, probe); const base = resolve(attempts, "../..");
       const globalPath = join(base, "active.lock");
       await exclusiveWrite(globalPath, JSON.stringify({ attempt_id: id, probe }) + "\n"); globalLock = globalPath;
@@ -170,10 +182,10 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
           if (p01.reserved_attempts !== 1 || p01.recorded_dispatches !== 1 || p01.unresolved_attempts !== 0)
             throw new Error("P01_REUSE_REVIEW_REQUIRED");
         }
-        if (probe === "P03" || probe === "P04" || probe === "P03R" || probe === "P05" || probe === "P06") {
-          const priorProbes = probe === "P06" ? ["P01", "P02", "P03", "P04", "P03R", "P05"] as const : probe === "P05" ? ["P01", "P02", "P03", "P04", "P03R"] as const :
+        if (probe === "P03" || probe === "P04" || probe === "P03R" || probe === "P05" || probe === "P06" || probe === "P07") {
+          const priorProbes = probe === "P07" ? ["P01", "P02", "P03", "P04", "P03R", "P05", "P06"] as const : probe === "P06" ? ["P01", "P02", "P03", "P04", "P03R", "P05"] as const : probe === "P05" ? ["P01", "P02", "P03", "P04", "P03R"] as const :
             probe === "P03R" ? ["P01", "P02", "P03", "P04"] as const : probe === "P03" ? ["P01", "P02", "P04"] as const : ["P01", "P02"] as const;
-          const reviewed: Readonly<Partial<Record<ExecutableProbe, number>>> = (checkpoint as P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint).prior_probe_dispatches_reviewed;
+          const reviewed: Readonly<Partial<Record<ExecutableProbe, number>>> = (checkpoint as P03Checkpoint | P04Checkpoint | P03RCheckpoint | P05Checkpoint | P06Checkpoint | P07Checkpoint).prior_probe_dispatches_reviewed;
           for (const prior of priorProbes) {
             const previous = await ledger(await checkedDirectory(projectRoot, prior), prior);
             if (previous.reserved_attempts !== reviewed[prior] || previous.recorded_dispatches !== reviewed[prior] ||
@@ -192,6 +204,8 @@ export function createPrivateProbeStore(projectRoot: string, probe: ExecutablePr
           ...(probe === "P05" ? { record_revision: "tastegate.probe-attempt.v4", profile_revision: def.profile.revision,
             max_response_bytes: def.maxResponseBytes } : {}),
           ...(probe === "P06" ? { record_revision: "tastegate.probe-attempt.v5", profile_revision: def.profile.revision,
+            max_response_bytes: def.maxResponseBytes } : {}),
+          ...(probe === "P07" ? { record_revision: "tastegate.probe-attempt.v6", profile_revision: def.profile.revision,
             max_response_bytes: def.maxResponseBytes } : {}),
           ...(probe === "P03R" ? { record_revision: "tastegate.probe-attempt.v3", profile_revision: P03R_PROFILE.revision,
             max_response_bytes: def.maxResponseBytes } : {}), profile: def.profile, checkpoint, source,
@@ -246,6 +260,11 @@ export async function liveProbeFromPrivateCheckpoint(projectRoot: string, probe:
     try { const p06 = await inspectAcceptedP06Shortlist(projectRoot); if (!matchesP06Shortlist(approved, p06)) throw new Error(); binding = p06; }
     catch { return def.blocked("EVIDENCE_UNAVAILABLE"); }
   }
+  if (probe === "P07") {
+    // The artist identity is re-derived from the immutable captures, and the owner's consent must still verify (receipt, consumed offer, not withdrawn, same request hash).
+    try { const p07 = await inspectAcceptedP05Signal(projectRoot); if (!matchesP07Signal(approved, p07) || !await verifyP07Consent(projectRoot, approved as P07Checkpoint, p07)) throw new Error(); binding = p07; }
+    catch { return def.blocked("EVIDENCE_UNAVAILABLE"); }
+  }
   let local: Awaited<ReturnType<typeof loadLocalP01Config>>;
   try { local = await loadLocalP01Config(projectRoot); }
   catch (error) { return def.blocked((error as Error).message === "UNSAFE_DIAGNOSTICS" ? "UNSAFE_DIAGNOSTICS" : "CONFIG_BLOCKED"); }
@@ -261,6 +280,7 @@ export async function liveProbeFromPrivateCheckpoint(projectRoot: string, probe:
       "src/qloo/p03-profile.ts", "src/qloo/p03-private-store.ts", "scripts/qloo-probe-p03.mjs",
       ...(probe === "P05" ? ["src/qloo/p05-profile.ts", "src/qloo/p05-signal.ts", "scripts/qloo-probe-p05.mjs"] : []),
       ...(probe === "P06" ? ["src/qloo/p05-profile.ts", "src/qloo/p05-signal.ts", "src/qloo/p06-profile.ts", "src/qloo/p06-shortlist.ts", "scripts/qloo-probe-p06.mjs"] : []),
+      ...(probe === "P07" ? ["src/qloo/p05-profile.ts", "src/qloo/p05-signal.ts", "src/qloo/owner-consent.ts", "src/qloo/p07-profile.ts", "src/qloo/p07-signal.ts", "src/qloo/p07-consent.ts", "scripts/qloo-probe-p07.mjs"] : []),
       "src/qloo/p03r-profile.ts", "src/qloo/p03r-private-store.ts", "src/qloo/probe-cli-contract.ts", "scripts/qloo-probe-p03r.mjs",
       "src/qloo/p04-profile.ts", "src/qloo/p04-private-store.ts",
       "scripts/probe-cli.mjs", "scripts/qloo-probe.mjs", "scripts/qloo-probe-p02.mjs", "scripts/qloo-probe-p04.mjs", "package.json", "package-lock.json"])

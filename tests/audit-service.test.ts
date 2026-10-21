@@ -5,7 +5,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { CUSTOM_SCENARIO_ID, CatalogSchema, LIVE_ACK, MAX_REQUEST_BYTES } from "../src/domain/catalog";
 import type { Confirmation } from "../src/domain/contracts";
 import { AuditReportSchema, ProviderAuditReportSchema } from "../src/domain/report-schema";
-import { createLiveGrant, loadLiveGrant, readLiveBudget, revokeLiveGrant, startLiveRun, type LiveGrant } from "../src/qloo/live-grant";
+import { loadLiveGrant, readLiveBudget, revokeLiveGrant, startLiveRun, type LiveGrant } from "../src/qloo/live-grant";
+import { approvedGrant } from "./helpers/live-grant";
 import type { LiveSend } from "../src/qloo/live-transport";
 import { providerRef } from "../src/qloo/provider-ref";
 import { loadRecordedEvidence } from "../src/qloo/recorded-adapter";
@@ -24,9 +25,7 @@ const forbidden: LiveSend = async () => { throw new Error("A provider request mu
 const select = (target_id: string, id: string, kind: "entity" | "tag" = "entity"): Confirmation => ({ target_id, decision: "select", ref: providerRef(kind, id) });
 async function emptyRoot() { await mkdir(".artifacts", { recursive: true }); const root = await mkdtemp(resolve(".artifacts/svc-test-")); roots.push(root); await mkdir(join(root, "private"), { mode: 0o700 }); return root; }
 async function seeded() { const root = await seedRecordedRoot(); roots.push(root); return root; }
-async function grant(root: string, change: Partial<Parameters<typeof createLiveGrant>[1]> = {}) {
-  return createLiveGrant(root, { ownerReply: "Authorize one LIVE session", gateId: "gate-svc", minutes: 15, maxRequests: 14, maxRuns: 3, operations: ["entity_lookup", "tag_lookup", "rank_places", "discover_places"], ...change });
-}
+const grant = approvedGrant;
 function service(root: string, over: Partial<AuditServiceDeps> = {}) {
   return createAuditService({ projectRoot: root, recordings: () => loadRecordedEvidence(root), liveConfig: noCredential, send: forbidden, ...over });
 }

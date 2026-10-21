@@ -1,4 +1,4 @@
-import type { Capture, Entity, InsightsPolicy, Snapshot } from "../domain/contracts";
+import type { Capture, Entity, InsightsPolicy, PublicReference, Snapshot } from "../domain/contracts";
 
 export type Signals = { preference_entity_ids: string[]; preference_tag_ids: string[] };
 export type LookupRequest = { query: string; requested_kind: "artist" | "movie" | "place" };
@@ -22,6 +22,9 @@ export type RecordedObservation = { source_mode: "recorded_live"; dataset_id: st
 export interface RecordedQlooAdapter {
   readonly mode: "recorded_live";
   readonly datasetId: string;
+  // An owner-registered official public reference for one provider identity, if the host has one (see PublicReferenceSchema).
+  // Synchronous and local: it performs no I/O. Absent or null means no second source is registered for that identity.
+  publicReference?(entityId: string): PublicReference | null;
   searchEntity(request: LookupRequest, context: CallContext): Promise<RecordedObservation>;
   searchTags(query: string, context: CallContext): Promise<RecordedObservation>;
   rankPlaces(request: RankRequest, context: CallContext): Promise<RecordedObservation>;
@@ -35,6 +38,8 @@ export type LiveObservation = { source_mode: "authorized_live"; dataset_id: stri
 export interface AuthorizedLiveQlooAdapter {
   readonly mode: "authorized_live";
   readonly datasetId: string;
+  // Live mode has no reference registry: a registered page is bound to a recorded identity, never to a fresh response.
+  publicReference?(entityId: string): PublicReference | null;
   searchEntity(request: LookupRequest, context: CallContext): Promise<LiveObservation>;
   searchTags(query: string, context: CallContext): Promise<LiveObservation>;
   rankPlaces(request: RankRequest, context: CallContext): Promise<LiveObservation>;

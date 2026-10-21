@@ -4,6 +4,8 @@
 
 **What this evaluation can and cannot say.** It shows that, on the same plan and the same evidence, TasteGate keeps hard-constraint violations and unproven items out of the plan far better than two simple baselines, at a price (more calls, and people asked to decide). It does **not** show that real agents fail this way, that users prefer the output, or anything about cultural relevance. The live stratum was not run.
 
+> **Phase 3B addition.** The results now also contain a **fair control without cultural evidence** (`RULES_AND_IDENTITY_ONLY` versus `TASTEGATE_WITH_QLOO_CULTURAL_EVIDENCE`), reported per stratum as three separate questions: evidence coverage, decision difference and independently validated quality gain. Outcome: coverage yes, no change to what is kept in any synthetic plan, `QUALITY_UPLIFT_NOT_ESTABLISHED`. See [QLOO_INCREMENTAL_VALUE_FINAL](QLOO_INCREMENTAL_VALUE_FINAL.md). Numbers in the tables below that were produced before Phase 3B are unchanged; the regenerated aggregates are in `data/evaluation-results.json`.
+
 ## Method
 
 Every plan is put through three policies on the **same evidence source** (the same fixture world, or the same recordings). They differ only in what they do with it:

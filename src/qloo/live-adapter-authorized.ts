@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 import { CaptureSchema, type Capture, type Snapshot, type UnavailableReason } from "../domain/contracts";
 import { hasUnsafeCharacters } from "../domain/custom-input";
 import { assertServer, classifyHttp } from "./boundary-error";
-import { LIVE_ENDPOINT, loadLiveGrant, startLiveRun, type LiveGrant, type LiveOperation, type LiveRunHandle } from "./live-grant";
+import { LIVE_ENDPOINT, loadLiveGrant, parametersAllowed, startLiveRun, type GrantEnvironment, type LiveGrant, type LiveOperation, type LiveRunHandle } from "./live-grant";
 import { LIVE_ORIGIN, type LiveSend } from "./live-transport";
 import { projectInsightsPlaces, projectSearch, projectTags } from "./projections";
 import { providerRef } from "./provider-ref";
@@ -25,14 +25,14 @@ export type LiveSessionDisabled = { status: "DISABLED"; reason: "CREDENTIAL_NOT_
 export type LiveSession = { status: "AVAILABLE"; adapter: AuthorizedLiveQlooAdapter; grant: LiveGrant; counts(): Promise<{ runs: number; reserved: number; settled: number }>; close(): void };
 let sessionOpen = false; let requestInFlight = false;
 
-export async function openAuthorizedLiveSession(deps: { projectRoot: string; config: () => QlooServerConfig; send: LiveSend; now?: () => number }): Promise<LiveSession | LiveSessionDisabled> {
+export async function openAuthorizedLiveSession(deps: { projectRoot: string; config: () => QlooServerConfig; send: LiveSend; now?: () => number; environment?: GrantEnvironment }): Promise<LiveSession | LiveSessionDisabled> {
   assertServer();
   const now = deps.now ?? Date.now;
   let headers: Readonly<Record<string, string>>;
   try { const config = deps.config(); if (config.mode !== "live") throw new Error(); headers = config.credentialHeaders(); }
   catch { return { status: "DISABLED", reason: "CREDENTIAL_NOT_CONFIGURED" }; }
   if (sessionOpen || requestInFlight) return { status: "DISABLED", reason: "LIVE_BUSY" };
-  const status = await loadLiveGrant(deps.projectRoot, now());
+  const status = await loadLiveGrant(deps.projectRoot, now(), deps.environment);
   if (!status.ok) return { status: "DISABLED", reason: status.reason === "LEDGER_UNAVAILABLE" ? "LEDGER_UNAVAILABLE" : status.reason };
   sessionOpen = true;
   const run = await startLiveRun(deps.projectRoot, status.grant, now());
@@ -56,6 +56,8 @@ function createAdapter(ctx: { run: LiveRunHandle; grant: LiveGrant; headers: Rea
     if (context.signal.aborted) return refuse("The request was cancelled before it was sent. Nothing was sent.");
     if (requestInFlight) return refuse("Another live request is still in flight; this one was not sent.");
     if (!ctx.grant.allowed_operations.includes(operation)) return refuse("This operation is not covered by the owner's live grant. Nothing was sent.", "APPROVAL_REQUIRED");
+    // The grant's terms name the exact parameters each builder may send; anything else is refused before a slot is reserved.
+    if (!parametersAllowed(operation, Object.keys(params))) return refuse("These request parameters are not covered by the owner's live grant. Nothing was sent.", "APPROVAL_REQUIRED");
     requestInFlight = true; // the single in-flight slot is claimed before the first await, so two concurrent calls cannot both send
     let timer: ReturnType<typeof setTimeout> | undefined; let onAbort: (() => void) | undefined;
     try {

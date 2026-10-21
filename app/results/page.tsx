@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import results from "../../data/evaluation-results.json";
+import type { AblationSummary } from "../../src/eval/ablation-summary";
 import type { PolicyAggregate } from "../../src/eval/paired";
 import { RESULTS_SCHEMA, type PublicResults } from "../../src/eval/publish";
 
@@ -16,6 +17,7 @@ type Comparison = {
   policies: Record<"AS_PROPOSED" | "TOP_HIT_UNCHECKED" | "TASTEGATE", PolicyAggregate>;
   paired_signs: Record<"vs_AS_PROPOSED" | "vs_TOP_HIT_UNCHECKED", { shipped_violating: Sign; shipped_unverifiable: Sign; identity_errors: Sign }>;
   gate: { final_status_counts: Record<string, number>; final_items: number; final_items_with_taste_evidence: number; taste_evidence_coverage: number | "N/A" };
+  cultural_evidence_ablation?: AblationSummary;
 };
 type Sign = { better: number; same: number; worse: number };
 type StratumView = { status: string; note: string; cases: number; cases_passed: number; failed_case_ids: string[] | number; comparison: Comparison | null };
@@ -49,6 +51,34 @@ function Table({ c }: { c: Comparison }) {
       {COLUMNS.map(([k]) => <td key={k} className={k === "TASTEGATE" ? "us" : undefined}>{r.cell(k)}</td>)}</tr>)}</tbody>
   </table>;
 }
+const pct = (v: number | "N/A") => v === "N/A" ? "n/a" : `${Math.round(v * 100)}%`;
+// The same gate with and without Qloo's cultural evidence, kept as three separate questions with their own numbers.
+function Ablation({ a }: { a: AblationSummary }) {
+  const q = a.INDEPENDENTLY_VALIDATED_QUALITY_GAIN; const m = q.oracle_metrics;
+  return <div className="ablation" aria-label="What Qloo's cultural evidence adds">
+    <h3>What does Qloo’s cultural evidence add?</h3>
+    <p className="muted small">The control is the <em>same gate without cultural evidence</em>. It shares {a.shared_with_control.join(", ")}; it differs in one thing only. {a.reading}</p>
+    <div className="table-wrap"><table className="results-table"><thead><tr><th scope="col">Question</th><th scope="col">Result</th></tr></thead><tbody>
+      <tr><th scope="row">EVIDENCE_COVERAGE_GAIN<span className="muted small"> — coverage, not quality</span></th>
+        <td>{n(a.EVIDENCE_COVERAGE_GAIN.with_cultural_evidence.treatment)} of {n(a.EVIDENCE_COVERAGE_GAIN.shipped_items)} kept items carry cultural evidence ({pct(a.EVIDENCE_COVERAGE_GAIN.coverage_treatment)}); the control has none.</td></tr>
+      <tr><th scope="row">DECISION_DIFFERENCE<span className="muted small"> — did it change the plan?</span></th>
+        <td>{a.DECISION_DIFFERENCE.plans_with_a_different_kept_plan} of {a.plans} plans kept a different set of items ({a.DECISION_DIFFERENCE.items_only_in_treatment} only with the evidence, {a.DECISION_DIFFERENCE.items_only_in_control} only without it).</td></tr>
+      <tr><th scope="row">INDEPENDENTLY_VALIDATED_QUALITY_GAIN<span className="muted small"> — judged by an oracle that does not use Qloo’s affinity</span></th>
+        <td>Strictly better in {q.plans_treatment_strictly_better}, strictly worse in {q.plans_control_strictly_better}, tied in {q.plans_tied} of {a.plans} plans. Violating items shipped: {n(m.false_accepts_violating_items_shipped.treatment)} vs {n(m.false_accepts_violating_items_shipped.control)};
+          valid items dropped: {n(m.false_rejects_valid_items_dropped.treatment)} vs {n(m.false_rejects_valid_items_dropped.control)}.</td></tr>
+      <tr><th scope="row">CANDIDATE_ASSESSMENT_DIFFERENCES<span className="muted small"> — labels that change without the evidence</span></th>
+        <td>{n(a.CANDIDATE_ASSESSMENT_DIFFERENCES.items_whose_verdict_differs)} of {n(a.CANDIDATE_ASSESSMENT_DIFFERENCES.audited_items)} audited items are labelled differently (for example PASS or REVIEW versus UNKNOWN for missing evidence).</td></tr>
+      <tr><th scope="row">EVIDENCE_SUPPORTED_RANKING<span className="muted small"> — an ordering only the evidence can give</span></th>
+        <td>{n(a.EVIDENCE_SUPPORTED_RANKING.items_with_a_cultural_ordering.treatment)} items carry a cultural ordering; the control has none. The ordering decides no hard check.</td></tr>
+      <tr><th scope="row">VALID_REPAIRS<span className="muted small"> — judged by the oracle, not by Qloo</span></th>
+        <td>Replacements accepted: {n(a.VALID_REPAIRS.accepted.treatment)} vs {n(a.VALID_REPAIRS.accepted.control)}; valid by the oracle: {n(a.VALID_REPAIRS.accepted_and_valid_by_oracle.treatment)} vs {n(a.VALID_REPAIRS.accepted_and_valid_by_oracle.control)}.</td></tr>
+      <tr><th scope="row">UNKNOWN items</th><td>{pct(a.unknown_frequency.treatment_rate)} with the evidence vs {pct(a.unknown_frequency.control_rate)} without ({n(a.unknown_frequency.audited_items)} audited items).</td></tr>
+      <tr><th scope="row">Cost</th><td>{a.cost.calls_per_plan_with_cultural_evidence} vs {a.cost.calls_per_plan_without} evidence-source calls per plan (the control skips the ranking request). Local run time of the treatment: median {a.runtime.treatment_local_latency_ms_median ?? "—"} ms; the control has no separate measurement.</td></tr>
+    </tbody></table></div>
+    <p><strong className={a.quality_uplift === "QUALITY_UPLIFT_NOT_ESTABLISHED" ? "badge tone-review" : "badge tone-pass"}>{a.quality_uplift}</strong>{" "}
+      <span className="muted small">No ground truth for cultural fit exists that is independent of Qloo’s own affinity, so a quality gain is claimed only where the oracle shows one.</span></p>
+  </div>;
+}
 const signText = (s: Sign, versus: string) => `In ${s.better} of ${s.better + s.same + s.worse} plans TasteGate shipped fewer violating items than “${versus}”, ${s.same} the same, ${s.worse} more.`;
 
 export default function ResultsPage() {
@@ -67,6 +97,7 @@ export default function ResultsPage() {
           <li><strong>Ship the plan as proposed</strong> — trusts the upstream agent completely.</li>
           <li><strong>Trust the first Qloo hit, check nothing</strong> — takes the provider’s first search result for each item and fills any gap with the provider’s own top recommendation, like a quick integration.</li>
           <li><strong>TasteGate</strong> — audit, repair one round, revalidate; it asks a person instead of guessing an identity.</li>
+          <li><strong>Control: rules and identity only</strong> — the same gate with the cultural evidence taken away, to separate what Qloo adds from what the rules already do.</li>
           <li>The oracle classifies each item that reaches the user from its true facts: <em>valid</em>, <em>violating</em> a hard constraint, or <em>unverifiable</em>.</li>
         </ul>
         <p className="muted small">Generated {data.generated_at_utc.slice(0, 16).replace("T", " ")} UTC from commit {data.base_commit.slice(0, 9)}{data.working_tree_dirty ? " plus uncommitted changes" : ""}. Holdout seed {data.holdout_seed}.</p></section>
@@ -76,6 +107,7 @@ export default function ResultsPage() {
         {s.status === "RUN" && s.comparison && <>
           <p><strong>{s.cases_passed} of {s.cases}</strong> cases satisfied every expectation or invariant{typeof s.failed_case_ids === "object" && s.failed_case_ids.length ? ` (failed: ${s.failed_case_ids.join(", ")})` : ""}.</p>
           <div className="table-wrap"><Table c={s.comparison} /></div>
+          {s.comparison.cultural_evidence_ablation && <Ablation a={s.comparison.cultural_evidence_ablation} />}
           <ul className="plain">
             <li>{signText(s.comparison.paired_signs.vs_TOP_HIT_UNCHECKED.shipped_violating, "trust the first Qloo hit")}</li>
             <li>{signText(s.comparison.paired_signs.vs_AS_PROPOSED.shipped_violating, "ship the plan as proposed")}</li>

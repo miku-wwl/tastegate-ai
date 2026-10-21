@@ -1,6 +1,6 @@
 import type {
   AuditInput, AuditReport, CandidateAudit, Confirmation, Entity, Finding, IdentityBasis, InsightsPolicy, PendingConfirmation,
-  PreferenceResolution, ProviderMode, Repair, RepairOutcome, Snapshot, StopReason,
+  PreferenceResolution, ProviderMode, PublicReference, Repair, RepairOutcome, Snapshot, StopReason,
 } from "../domain/contracts";
 import { REPAIR_TARGET_PREFIX, aggregate } from "../domain/contracts";
 
@@ -87,15 +87,26 @@ export function replacementDecision(decision: Confirmation | undefined, proposed
   return decision.ref === proposedId ? "confirmed" : "none";
 }
 export const replacementTarget = (slot: string) => `${REPAIR_TARGET_PREFIX}${slot}`;
-// A replacement's identity needs an independent lookup that returns the very same provider identity, or the
-// user's explicit confirmation of the provider's candidate details. Discovery alone never establishes identity.
-export function resolveReplacement(mode: EvidenceMode, lookup: Snapshot | undefined, proposed: Entity, decision: ReplacementDecision): ReplacementResolution {
+// A registered public reference agrees with a provider record when it names the same venue, city and country. It CONFLICTS when
+// the provider states a fact that the reviewed official page contradicts (a missing provider fact is neither).
+export const referenceAgrees = (ref: PublicReference, e: Entity) =>
+  e.city != null && e.country != null && same(ref.asserted_name, e.name) && same(ref.asserted_city, e.city) && ref.asserted_country === e.country;
+export const referenceConflicts = (ref: PublicReference, e: Entity) =>
+  !same(ref.asserted_name, e.name) || (e.city != null && !same(ref.asserted_city, e.city)) || (e.country != null && ref.asserted_country !== e.country);
+// A replacement's identity needs (a) an independent lookup that returns the very same provider identity, (b) a registered official
+// public reference that agrees with the provider record, or (c) the user's explicit confirmation of the provider's candidate
+// details. Discovery alone never establishes identity. Only (a) and (b) are corroboration; (c) is the user's decision.
+export function resolveReplacement(mode: EvidenceMode, lookup: Snapshot | undefined, proposed: Entity, decision: ReplacementDecision, reference: PublicReference | null = null): ReplacementResolution {
   if (mode === "fixture") { const r = resolveOriginal(mode, lookup); return { ...r, basis: r.entity ? "independent_lookup" : null }; }
   const independent = lookupMatches(lookup).find((m) => m.id === proposed.id) ?? null;
   if (independent) return { resolution: "resolved", entity: independent, basis: "independent_lookup" };
+  if (reference && referenceAgrees(reference, proposed)) return { resolution: "resolved", entity: proposed, basis: "official_public_reference" };
   if (decision === "confirmed") return { resolution: "resolved", entity: proposed, basis: "user_confirmation" };
   return { resolution: "unresolved", entity: null, basis: null };
 }
+// The one rule for REPAIR_VERIFIED: the replacement passed every revalidation gate AND its identity rests on a second source.
+export const isCorroborated = (basis: IdentityBasis | null) => basis === "independent_lookup" || basis === "official_public_reference";
+export const repairAccepted = (verdict: CandidateAudit["verdict"], basis: IdentityBasis | null) => verdict === "PASS" && isCorroborated(basis);
 type PreferenceKind = AuditInput["preferences"][number]["kind"];
 export function preferenceCandidates(kind: PreferenceKind, lookup: Snapshot | undefined): Array<{ id: string }> {
   if (kind === "tag_concept") return lookup?.kind === "tag_lookup" ? lookup.matches : [];
@@ -136,6 +147,9 @@ export function deriveRepairOutcomes(c: OutcomeContext): RepairOutcome[] {
       if (mine.every((r) => r.revalidation.verdict === "BLOCKED")) return outcome("REPAIR_REJECTED", "REPLACEMENT_FAILED_HARD_CHECK", mine[0]);
       if (mine.some((r) => replacementDecision(c.decisions.get(replacementTarget(slot)), r.proposed_entity_id) === "declined"))
         return outcome("REPAIR_REJECTED", "REPLACEMENT_DECLINED_BY_USER", mine[0]);
+      // Every gate passed but the identity rests on the user's click alone: a near miss, shown as such and never as verified.
+      const uncorroborated = mine.find((r) => r.revalidation.verdict === "PASS" && !isCorroborated(r.identity_basis));
+      if (uncorroborated) return outcome("EVIDENCE_INSUFFICIENT", "REPLACEMENT_NEEDS_INDEPENDENT_CORROBORATION", uncorroborated);
       const awaiting = mine.some((r) => r.revalidation.resolution === "unresolved" && r.revalidation.hard_constraints !== "fail");
       return outcome("EVIDENCE_INSUFFICIENT", awaiting ? "REPLACEMENT_AWAITING_IDENTITY_CONFIRMATION" : "REPLACEMENT_EVIDENCE_MISSING", mine[0]);
     }

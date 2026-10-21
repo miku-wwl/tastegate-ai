@@ -316,3 +316,23 @@ button.link.danger { color: var(--blocked); }
 .results-table td { font-variant-numeric: tabular-nums; font-weight: 650; }
 .results-table .us { background: var(--brand-soft); }
 .stratum .badge { font-size: 12px; }
+
+/* ---------- Judge orientation: explainer, guided demo, decision trace, repair assessment ---------- */
+.how { margin: 18px 0 6px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); max-width: 980px; }
+.how-title { font-size: 16px; letter-spacing: -.01em; margin-bottom: 10px; }
+.how-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.how-steps li { display: grid; gap: 4px; align-content: start; }
+.how-num { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-weight: 750; font-size: 14px; }
+.guide { margin: 14px 0; padding: 14px 18px; background: var(--brand-soft); border: 1px solid var(--line-strong); border-left: 5px solid var(--brand); border-radius: var(--radius-sm); }
+.guide h3 { margin: 2px 0 6px; font-size: 17px; }
+.guide .eyebrow { margin: 0; }
+.assessment { margin-top: 10px; display: grid; gap: 8px; }
+.assess-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.assessment details { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 12px; }
+.assessment summary { cursor: pointer; font-weight: 650; }
+.trace .results-table td, .trace .results-table th { font-variant-numeric: normal; font-weight: 500; }
+.trace .results-table tbody th { font-weight: 650; }
+.trace code { font-size: 12px; color: var(--muted); }
+@media (max-width: 860px) { .how-steps { grid-template-columns: minmax(0, 1fr); } }
+.assess-pills .pill { white-space: normal; text-align: left; line-height: 1.3; border-radius: var(--radius-sm); }
+.repair-row, .assessment, .guide { min-width: 0; overflow-wrap: anywhere; }

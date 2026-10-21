@@ -1,6 +1,7 @@
 import { performance } from "node:perf_hooks";
 import type { AnyAuditReport, AuditInput, Entity } from "../domain/contracts";
 import type { CallContext, FixtureQlooAdapter, ProviderQlooAdapter } from "../qloo/ports";
+import type { ControlId } from "./ablation";
 
 // The policies a plan can be put through. Both baselines are simple, defined before any result was seen, and run against
 // exactly the same evidence source as the gate: they differ only in what they DO with it.
@@ -11,7 +12,7 @@ import type { CallContext, FixtureQlooAdapter, ProviderQlooAdapter } from "../ql
 export type PolicyId = "AS_PROPOSED" | "TOP_HIT_UNCHECKED" | "TASTEGATE";
 export const POLICIES: readonly PolicyId[] = ["AS_PROPOSED", "TOP_HIT_UNCHECKED", "TASTEGATE"];
 export type ShippedItem = { slot: string; entity: Entity | null; origin: "original" | "unchecked_fill" | "replacement" };
-export type PolicyOutcome = { policy: PolicyId; shipped: ShippedItem[]; requests: number; elapsed_ms: number; paused_for_human: boolean; human_decisions: number; notes: string[] };
+export type PolicyOutcome = { policy: PolicyId | ControlId; shipped: ShippedItem[]; requests: number; elapsed_ms: number; paused_for_human: boolean; human_decisions: number; notes: string[] };
 type Evidence = FixtureQlooAdapter | ProviderQlooAdapter;
 const context = (n: number): CallContext => ({ runId: "baseline", callId: `b${n}`, signal: new AbortController().signal });
 

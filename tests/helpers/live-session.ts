@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { runAuthorizedLiveAudit } from "../../src/audit/workflow";
 import type { Confirmation, ProviderAuditReport } from "../../src/domain/contracts";
 import { openAuthorizedLiveSession } from "../../src/qloo/live-adapter-authorized";
-import { createLiveGrant } from "../../src/qloo/live-grant";
+import { approvedGrant } from "./live-grant";
 import { QlooServerConfig } from "../../src/qloo/server-config";
 import { RECORDED_INSIGHTS_POLICY, getRecordedScenarioInput } from "../../src/scenarios/recorded-nyc";
 import { KEY, world, type Seen, type WorldOptions } from "./live-world";
@@ -14,7 +14,7 @@ export async function runLiveReport(confirmations?: Confirmation[], options: Wor
   await mkdir(".artifacts", { recursive: true }); const root = await mkdtemp(resolve(".artifacts/live-model-")); const seen: Seen = [];
   try {
     await mkdir(join(root, "private"), { mode: 0o700 });
-    await createLiveGrant(root, { ownerReply: "Authorize one LIVE session", gateId: "gate-model", minutes: 15, maxRequests: 14, maxRuns: 2, operations: ["entity_lookup", "tag_lookup", "rank_places", "discover_places"] });
+    await approvedGrant(root, { maxRuns: 2 });
     const session = await openAuthorizedLiveSession({ projectRoot: root, config: () => QlooServerConfig.load({ QLOO_MODE: "live", QLOO_API_KEY: KEY }), send: world(seen, options) });
     if (session.status !== "AVAILABLE") throw new Error("live session unavailable: " + session.reason);
     try { return { report: await runAuthorizedLiveAudit(input, session.adapter, { scenarioId: "live-model", insightsPolicy: RECORDED_INSIGHTS_POLICY, confirmations }), seen }; }

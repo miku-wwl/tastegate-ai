@@ -6,10 +6,11 @@ import { P03R_PROFILE, P03RProfileSchema, P03RCheckpointSchema, P03RSummarySchem
 
 import { P05_PROFILE, P05ProfileSchema, P05CheckpointSchema, P05SummarySchema, validP05Checkpoint, blockedP05, type P05Summary } from "./p05-profile";
 import { P06_PROFILE, P06ProfileSchema, P06CheckpointSchema, P06SummarySchema, validP06Checkpoint, blockedP06, type P06Summary } from "./p06-profile";
+import { P07_PROFILE, P07ProfileSchema, P07CheckpointSchema, P07SummarySchema, validP07Checkpoint, blockedP07, type P07Summary } from "./p07-profile";
 
-export const EXECUTABLE_PROBES = Object.freeze(["P01", "P02", "P03", "P04", "P03R", "P05", "P06"] as const);
+export const EXECUTABLE_PROBES = Object.freeze(["P01", "P02", "P03", "P04", "P03R", "P05", "P06", "P07"] as const);
 export type ExecutableProbe = typeof EXECUTABLE_PROBES[number];
-export type RawProbeSummary = P01Summary | P02Summary | P03Summary | P04Summary | P03RSummary | P05Summary | P06Summary;
+export type RawProbeSummary = P01Summary | P02Summary | P03Summary | P04Summary | P03RSummary | P05Summary | P06Summary | P07Summary;
 const definitions = Object.freeze({
   P01: Object.freeze({ profile: P01_PROFILE, profileSchema: P01ProfileSchema, checkpointSchema: P01CheckpointSchema,
     summarySchema: P01SummarySchema, validCheckpoint: validP01Checkpoint, blocked: blockedP01, maxResponseBytes: 65_536 }),
@@ -25,9 +26,11 @@ const definitions = Object.freeze({
     summarySchema: P03RSummarySchema, validCheckpoint: validP03RCheckpoint, blocked: blockedP03R, maxResponseBytes: P03R_PROFILE.max_response_bytes }),
   P06: Object.freeze({ profile: P06_PROFILE, profileSchema: P06ProfileSchema, checkpointSchema: P06CheckpointSchema,
     summarySchema: P06SummarySchema, validCheckpoint: validP06Checkpoint, blocked: blockedP06, maxResponseBytes: P06_PROFILE.max_response_bytes }),
+  P07: Object.freeze({ profile: P07_PROFILE, profileSchema: P07ProfileSchema, checkpointSchema: P07CheckpointSchema,
+    summarySchema: P07SummarySchema, validCheckpoint: validP07Checkpoint, blocked: blockedP07, maxResponseBytes: P07_PROFILE.max_response_bytes }),
 });
-// Closed trusted registry. P05 and P06 additionally need private reviewed bindings; P07-P10 remain excluded.
+// Closed trusted registry. P05, P06 and P07 additionally need private reviewed bindings (and P07 a consumed owner consent); P08-P10 remain excluded.
 export function probeDefinition(id: ExecutableProbe) {
-  if (id !== "P01" && id !== "P02" && id !== "P03" && id !== "P04" && id !== "P03R" && id !== "P05" && id !== "P06") throw new Error("PROBE_NOT_EXECUTABLE");
+  if (id !== "P01" && id !== "P02" && id !== "P03" && id !== "P04" && id !== "P03R" && id !== "P05" && id !== "P06" && id !== "P07") throw new Error("PROBE_NOT_EXECUTABLE");
   return definitions[id];
 }

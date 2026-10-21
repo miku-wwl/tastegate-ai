@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { P06_PROFILE, P06CheckpointSchema, P06ProfileSchema, P06SummarySchema, SAVED_P03R_ATTEMPT, SAVED_P05_ATTEMPT, validP06Checkpoint } from "../src/qloo/p06-profile";
 import { SAVED_P01_ATTEMPT } from "../src/qloo/p02-profile";
 import { buildP06ShortlistReview, deriveP06Shortlist, inspectAcceptedP06Shortlist, matchesP06Shortlist } from "../src/qloo/p06-shortlist";
-import { ownerReplyNamesOnlyP06, prepareP06ShortlistReview, registerP06Approval } from "../src/qloo/p06-approval";
+import { prepareP06ShortlistReview, registerP06Approval } from "../src/qloo/p06-approval";
 import { probeDefinition } from "../src/qloo/probe-definitions";
 import { createLocalRawProbeRunner, type ProbeRequest, type ProbeStore } from "../src/qloo/raw-probe-runner";
 import { createPrivateProbeStore, inspectPrivateProbeLedger } from "../src/qloo/raw-probe-store";
@@ -29,9 +29,9 @@ beforeEach(() => { previousArgs = process.execArgv; process.execArgv = [];
 afterEach(() => { process.execArgv = previousArgs; expect(globalThis.fetch).not.toHaveBeenCalled(); expect(https.request).not.toHaveBeenCalled(); vi.restoreAllMocks(); });
 afterAll(async () => { for (const root of roots) await rm(root, { recursive: true, force: true }); });
 
-it("is a closed registry entry: P06 is executable, P07-P10 and arbitrary hosts are not", () => {
+it("is a closed registry entry: P06 is executable, P08-P10 and arbitrary hosts are not", () => {
   expect(probeDefinition("P06").profile.revision).toBe(P06_PROFILE.revision);
-  for (const id of ["P07", "P08", "P09", "P10", "https://example.test"]) expect(() => probeDefinition(id as never)).toThrow("PROBE_NOT_EXECUTABLE");
+  for (const id of ["P08", "P09", "P10", "https://example.test"]) expect(() => probeDefinition(id as never)).toThrow("PROBE_NOT_EXECUTABLE");
 });
 it("derives the shortlist only from manifest-verified immutable captures and needs the private review", async () => {
   const s = await seedP06(); roots.push(s.root);
@@ -190,36 +190,26 @@ it("refuses to reserve when any earlier probe is unsettled or its review count i
   expect(await readdir(join(s.base, "p06/attempts")).catch(() => [] as string[])).toEqual([]);
 });
 
-it.each([["批准 P06 一次", true], ["Approve P06 once", true], ["APPROVE P06 ONLY.", true], ["批准", false], ["approve all probes", false],
-  ["approve P06 and P07", false], ["P05", false], ["P060", false], ["approve P03R", false], ["", false], ["P06 " + "x".repeat(600), false]])("owner reply %j names only P06: %s", (reply, ok) => {
-  expect(ownerReplyNamesOnlyP06(reply)).toBe(ok);
-});
-it("registers exactly one single-use approval from verified bindings and writes nothing public", async () => {
+it("the P06 registration path is retired: no reply, however phrased, can register an approval", async () => {
   const s = await ready(), before = await Promise.all(s.historicalFiles.map((f) => readFile(f)));
-  await expect(registerP06Approval(s.root, { ownerReply: "批准所有 probe", gateId: "gate-1" })).rejects.toThrow("P06_APPROVAL_REGISTRATION_FAILED");
-  await expect(registerP06Approval(s.root, { ownerReply: "批准 P06 一次", gateId: "bad gate id" })).rejects.toThrow();
+  await expect(registerP06Approval()).rejects.toThrow("P06_APPROVAL_RETIRED");
   expect((await readdir(s.base)).some((n) => n.startsWith("p06-checkpoint") || n.startsWith("p06-approval-receipt"))).toBe(false);
-  const now = Date.now(); const result = await registerP06Approval(s.root, { ownerReply: "批准 P06 一次", gateId: "gate-1", now });
-  expect(result).toMatchObject({ status: "REGISTERED", window_minutes: 5 }); expect(Date.parse(result.approval_expires_at) - Date.parse(result.approved_at)).toBe(5 * 60_000);
-  for (const secret of [AUTH.artist, AUTH.nyc, AUTH.control]) expect(JSON.stringify(result)).not.toContain(secret);
-  const checkpoint = JSON.parse(await readFile(join(s.base, "p06-checkpoint.json"), "utf8"));
-  expect(validP06Checkpoint(checkpoint, now)).toBe(true); expect(checkpoint.attempt_id).toBe(result.attempt_id);
-  expect(matchesP06Shortlist(checkpoint, s.binding)).toBe(true);
-  const receipt = JSON.parse(await readFile(join(s.base, `p06-approval-receipt-${result.attempt_id}.json`), "utf8"));
-  expect(receipt).toMatchObject({ owner_reply: "批准 P06 一次", max_dispatches: 1, retries: 0, redirects: 0, timeout_ms: 4000, max_response_bytes: 262144 });
-  expect(receipt.does_not_authorize).toEqual(expect.arrayContaining(["SECOND_P06", "P07_P10", "PRODUCT_LIVE_MODE"]));
-  const url = new URL(receipt.request.url); expect(url.searchParams.get("filter.results.entities")).toBe(`${AUTH.nyc},${AUTH.control}`);
-  expect([...url.searchParams.keys()]).toEqual(["filter.type", "signal.interests.entities", "filter.results.entities", "take"]);
-  await expect(registerP06Approval(s.root, { ownerReply: "批准 P06 一次", gateId: "gate-2" })).rejects.toThrow(); // never a second approval file
-  expect((await readdir(s.base)).filter((n) => n.startsWith("p06-approval-receipt"))).toHaveLength(1); // and no orphan receipt
   expect(await Promise.all(s.historicalFiles.map((f) => readFile(f)))).toEqual(before);
 });
-it("refuses to register when an earlier probe is unsettled or a P06 attempt already exists", async () => {
-  const unsettled = await ready(); await rm(join(unsettled.base, "p04/attempts"), { recursive: true, force: true });
-  await expect(registerP06Approval(unsettled.root, { ownerReply: "Approve P06", gateId: "g" })).rejects.toThrow();
+it("a checkpoint is still validated, bound to the verified shortlist, and its identities cannot be swapped", async () => {
+  const s = await ready(), cp = await s.checkpoint(), now = Date.now();
+  expect(validP06Checkpoint(cp, now)).toBe(true); expect(matchesP06Shortlist(cp, s.binding)).toBe(true);
+  expect(validP06Checkpoint({ ...cp, max_dispatches: 2 }, now)).toBe(false);
+  expect(validP06Checkpoint({ ...cp, shortlist_entity_ids: [cp.shortlist_entity_ids[0], cp.shortlist_entity_ids[0]] }, now)).toBe(false);
+  expect(validP06Checkpoint({ ...cp, approval_expires_at: new Date(now - 1000).toISOString() }, now)).toBe(false);
+  expect(matchesP06Shortlist({ ...cp, shortlist_entity_ids: [cp.shortlist_entity_ids[1], cp.shortlist_entity_ids[0]] }, s.binding)).toBe(false);
+  expect(matchesP06Shortlist({ ...cp, signal_entity_id: AUTH.control }, s.binding)).toBe(false);
+});
+it("a used P06 ledger is never reopened: a second reservation of the same attempt is refused", async () => {
   const used = await ready(), cp = await used.checkpoint(), store = createPrivateProbeStore(used.root, "P06", cp, null, used.binding); await store.reserve();
   await store.saveSummary(await createLocalRawProbeRunner("P06", config(), local(async () => Response.json({ authored: true })), memory(), used.binding).run({ checkpoint: cp }));
-  await expect(registerP06Approval(used.root, { ownerReply: "Approve P06", gateId: "g" })).rejects.toThrow();
+  await expect(createPrivateProbeStore(used.root, "P06", cp, null, used.binding).reserve()).rejects.toThrow();
+  await expect(createPrivateProbeStore(used.root, "P06", await used.checkpoint(), null, used.binding).reserve()).rejects.toThrow(); // a fresh attempt id: its approval would have to be re-registered, which is retired
 });
 it("review content is fully determined by the verified captures", async () => {
   const s = await seedP06(); roots.push(s.root); const review = buildP06ShortlistReview(await deriveP06Shortlist(s.root));
@@ -247,14 +237,13 @@ it("keeps CLI preview/preflight sanitized and refuses execution without a P06 ch
   }
   expect((await inspectPrivateProbeLedger(s.root, "P06")).reserved_attempts).toBe(0);
 }, 60_000);
-it("the admin CLI registers only on an explicit P06 reply and never prints private values", async () => {
+it("the admin CLI refuses the retired registration mode and malformed arguments, and prints no private value", async () => {
   const s = await isolatedCliRoot(); const admin = join(s.root, "scripts/qloo-probe-p06-admin.mjs");
   const run = (...args: string[]) => spawnSync(process.execPath, [admin, ...args], { cwd: s.root, env: s.env, encoding: "utf8", windowsHide: true });
-  for (const args of [[], ["--register-approval"], ["--register-approval", "--owner-reply=approve P06"], ["--register-approval", "--owner-reply=approve everything", "--gate-id=g1"], ["--prepare-review", "x"]]) {
+  for (const args of [[], ["--register-approval"], ["--register-approval", "--owner-reply=approve P06", "--gate-id=g1"], ["--register-approval", "--owner-reply=批准 P06 一次", "--gate-id=g1"], ["--prepare-review", "x"], ["--bogus"]]) {
     const bad = run(...args); expect(bad.status).toBe(2); expect(bad.stdout).toBe("");
+    for (const secret of [AUTH.key, AUTH.artist, AUTH.nyc, AUTH.control]) expect(bad.stdout + bad.stderr).not.toContain(secret);
   }
-  const ok = run("--register-approval", "--owner-reply=批准 P06 一次", "--gate-id=g1"); expect(ok.status).toBe(0);
-  expect(JSON.parse(ok.stdout)).toMatchObject({ status: "REGISTERED", window_minutes: 5 });
-  for (const secret of [AUTH.key, AUTH.artist, AUTH.nyc, AUTH.control]) expect(ok.stdout + ok.stderr).not.toContain(secret);
-  expect(run("--register-approval", "--owner-reply=批准 P06 一次", "--gate-id=g2").status).toBe(2);
+  expect(JSON.parse(run("--register-approval", "--owner-reply=批准 P06 一次", "--gate-id=g1").stderr)).toEqual({ status: "BLOCKED", reason: "P06_APPROVAL_RETIRED" });
+  expect((await readdir(s.base)).some((n) => n.startsWith("p06-checkpoint") || n.startsWith("p06-approval-receipt"))).toBe(false);
 }, 60_000);

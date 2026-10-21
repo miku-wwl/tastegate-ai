@@ -2,6 +2,8 @@
 
 2026-10-20, Pacific/Auckland. Base commit `6b446784d01def511fe4ce1d53fe4ca4dd39b27e` plus **uncommitted** Phase 2B/3A changes. Nothing was committed, pushed, deployed or submitted.
 
+> **Superseded in part by [Phase 3B](PHASE3B_EXECUTION_REPORT.md) (2026-10-21).** The owner has since committed and pushed this work as `8c49370`. Three statements below are no longer current: (1) the live grant is now created through an exact, digest-bound consent flow (`--propose` then `--create --proposal=… --owner-reply=<the printed sentence>`); the free-text rule described here was a defect and was replaced ([review](LIVE_AUTHORIZATION_SECURITY_REVIEW.md)); (2) the P06 registration path (`--register-approval`) is **retired** because its single approval is consumed and sealed; (3) a replacement confirmed only by the user's click is now `EVIDENCE_INSUFFICIENT` (`REPLACEMENT_NEEDS_INDEPENDENT_CORROBORATION`), not `REPAIR_VERIFIED`: a second source is required. The P06 result itself is unchanged.
+
 **Status: PARTIAL, ready for independent review. STOP.** The offline product, the evaluation, the live adapter and the deployment-safety gate are built and verified, and the one prepared Qloo request (**P06**) was approved by the owner, executed **once**, reviewed and sealed (result: class A, below). A real verified repair needs a second, separately approved request (P07), and the decisions in the [final submission backlog](FINAL_SUBMISSION_BACKLOG.md) remain open. **Exactly one Qloo request was made in this phase (P06).**
 
 ## In one minute

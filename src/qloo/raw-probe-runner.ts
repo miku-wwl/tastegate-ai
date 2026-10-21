@@ -7,10 +7,13 @@ import { ProbeReasonSchema, type ProbeReason } from "./p01-profile";
 import { probeDefinition, type ExecutableProbe, type RawProbeSummary } from "./probe-definitions";
 import { matchesP05Signal, type P05SignalBinding } from "./p05-signal";
 import { matchesP06Shortlist, type P06ShortlistBinding } from "./p06-shortlist";
+import { matchesP07Signal } from "./p07-signal";
+import { p07RequestSha256, p07RequestUrl, type P07Checkpoint } from "./p07-profile";
 import { unsafeP01Diagnostics } from "./p01-local-env";
 
 // A trusted in-process binding to private reviewed identities. Only code that verified the private evidence can
-// mint one (WeakSet-registered), so untrusted checkpoint/model objects can never stand in for it.
+// mint one (WeakSet-registered), so untrusted checkpoint/model objects can never stand in for it. P07 reuses the P05
+// artist binding; its request is additionally fenced by the hash of the exact request the owner approved.
 export type ProbeBinding = P05SignalBinding | P06ShortlistBinding;
 
 export interface ProbeRequest {
@@ -66,6 +69,11 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
       const checkpoint = def.checkpointSchema.parse(options.checkpoint);
       if (probe === "P05" && !matchesP05Signal(checkpoint, binding as P05SignalBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
       if (probe === "P06" && !matchesP06Shortlist(checkpoint, binding as P06ShortlistBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
+      if (probe === "P07") {
+        if (!matchesP07Signal(checkpoint, binding as P05SignalBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
+        // The request is rebuilt from the fixed profile and the verified artist; it must be exactly what the owner approved.
+        if (p07RequestSha256((binding as P05SignalBinding).entityId) !== (checkpoint as P07Checkpoint).request_sha256) return def.blocked("INVALID_PROFILE");
+      }
       if (busy) return def.blocked("CONCURRENCY_LIMIT");
       if (started) return def.blocked("CALL_BUDGET_EXHAUSTED");
       if (options.signal?.aborted) return def.blocked("CANCELLED");
@@ -85,7 +93,8 @@ function runner(probe: ExecutableProbe, sourceMode: "offline_test" | "live_probe
       started = true;
       // The ONLY places private IDs enter a request: markers in the fixed profile are replaced by the verified binding.
       const p06 = binding as P06ShortlistBinding | undefined;
-      const url = new URL(def.profile.path, def.profile.origin); url.search = new URLSearchParams(probe === "P05" ?
+      const url = probe === "P07" ? new URL(p07RequestUrl((binding as P05SignalBinding).entityId)) : new URL(def.profile.path, def.profile.origin);
+      if (probe !== "P07") url.search = new URLSearchParams(probe === "P05" ?
         { ...def.profile.params, "signal.interests.entities": (binding as P05SignalBinding).entityId } : probe === "P06" ?
         { ...def.profile.params, "signal.interests.entities": p06!.signalEntityId, "filter.results.entities": `${p06!.nycEntityId},${p06!.controlEntityId}` } :
         def.profile.params).toString();
@@ -168,6 +177,7 @@ export async function executeLiveRawProbe(probe: ExecutableProbe, options: { che
   if (!def.validCheckpoint(options.checkpoint)) return def.blocked();
   if (probe === "P05" && !matchesP05Signal(options.checkpoint, binding as P05SignalBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
   if (probe === "P06" && !matchesP06Shortlist(options.checkpoint, binding as P06ShortlistBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
+  if (probe === "P07" && !matchesP07Signal(options.checkpoint, binding as P05SignalBinding | undefined)) return def.blocked("EVIDENCE_UNAVAILABLE");
   if (unsafeP01Diagnostics()) return def.blocked("UNSAFE_DIAGNOSTICS");
   const id = probe + ":" + def.checkpointSchema.parse(options.checkpoint).attempt_id;
   if (liveBusy) return def.blocked("CONCURRENCY_LIMIT");

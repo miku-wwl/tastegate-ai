@@ -5,7 +5,7 @@ import {
   AuditInputSchema, CaptureSchema, ConfirmationsSchema, EvidenceSchema, InsightsPolicySchema, ProviderEvidenceSchema, ProviderModeSchema, SnapshotSchema,
   digest, isQlooRef, isSyntheticId, snapshotEntityIds, snapshotOperation, snapshotRefs,
   type AuditReport, type CandidateAudit, type Capture, type Confirmation, type Entity, type Evidence, type Finding, type IdentityBasis, type InsightsPolicy,
-  type PendingConfirmation, type PreferenceResolution, type ProviderAuditReport, type ProviderEvidence, type ProviderMode, type Repair, type Snapshot, type State, type StopReason,
+  type PendingConfirmation, type PreferenceResolution, type ProviderAuditReport, type ProviderEvidence, type ProviderMode, type PublicReference, type Repair, type Snapshot, type State, type StopReason,
 } from "../domain/contracts";
 import { validateProviderReport, validateReport } from "../domain/report-schema";
 import {
@@ -14,7 +14,7 @@ import {
 } from "../qloo/ports";
 import {
   candidateVerdict, checkConstraints, checkUnconfirmedConstraints, deriveRepairOutcomes, hardState, insightsSignals, lookupMatches, pendingReplacementConfirmations,
-  preferenceCandidates, repairTargets, replacementDecision, replacementTarget, reportSummary, resolveOriginal, resolvePreference, resolveReplacement, type EvidenceMode,
+  preferenceCandidates, referenceConflicts, repairAccepted, repairTargets, replacementDecision, replacementTarget, reportSummary, resolveOriginal, resolvePreference, resolveReplacement, type EvidenceMode,
 } from "./rules";
 
 const fixtureObservation = z.strictObject({ source_mode: z.literal("fixture"), fixture_id: z.string(), snapshot: SnapshotSchema });
@@ -175,13 +175,15 @@ async function execute(engine: Engine, rawInput: unknown, options: AuditOptions)
     if (decisions.get(candidateId)?.decision === "skip") return { code: "UNRESOLVED_ENTITY", explanation: "You rejected every provider candidate; no identity is assumed." };
     return { code: "UNRESOLVED_ENTITY", explanation: "The provider returned no candidate; no claim of real-world nonexistence." };
   }
-  type RepairContext = { proposed: Entity; discovery: Discovery; slot: string };
+  // A public reference exists only for provider evidence whose adapter registers them (a recorded adapter built with a verified registry).
+  const referenceFor = (proposed: Entity): PublicReference | null => provider === null ? null : (adapter as ProviderQlooAdapter).publicReference?.(proposed.id) ?? null;
+  type RepairContext = { proposed: Entity; discovery: Discovery; slot: string; reference: PublicReference | null };
   function auditFull(candidateId: string, result: Lookup | undefined, ranking: Rank | null, claims: string[], repair?: RepairContext): { audit: CandidateAudit; basis: IdentityBasis | null } {
-    const resolved = repair ? resolveReplacement(mode, result?.snapshot, repair.proposed, replacementDecision(decisions.get(replacementTarget(repair.slot)), repair.proposed.id))
+    const resolved = repair ? resolveReplacement(mode, result?.snapshot, repair.proposed, replacementDecision(decisions.get(replacementTarget(repair.slot)), repair.proposed.id), repair.reference)
       : { ...resolveOriginal(mode, result?.snapshot, decisions.get(candidateId)), basis: null as IdentityBasis | null };
     const { resolution, entity, basis } = resolved;
-    // Facts of a user-confirmed replacement come from the discovery record the user reviewed; otherwise from the lookup.
-    const resolutionRef = basis === "user_confirmation" ? repair!.discovery.ref : result?.ref ?? null;
+    // Facts of a user-confirmed or reference-identified replacement come from the discovery record; otherwise from the lookup.
+    const resolutionRef = basis === "user_confirmation" || basis === "official_public_reference" ? repair!.discovery.ref : result?.ref ?? null;
     const findings = entity || !repair ? checkConstraints(input, entity, resolutionRef, inputRef, mode)
       : checkUnconfirmedConstraints(input, repair.proposed, repair.discovery.ref, inputRef, mode);
     const add = (code: Finding["code"], category: Finding["category"], state: Finding["state"], refs: string[], explanation: string) => findings.push({ code, category, state, constraint_id: null, evidence_refs: refs, explanation });
@@ -189,7 +191,11 @@ async function execute(engine: Engine, rawInput: unknown, options: AuditOptions)
       const declined = repair ? replacementDecision(decisions.get(replacementTarget(repair.slot)), repair.proposed.id) === "declined" : false;
       const f = identityFinding(resolution, result, candidateId, repair ? { declined } : undefined); add(f.code, "uncertainty", "unknown", result ? [result.ref] : [], f.explanation);
     }
-    if (basis === "user_confirmation") add("IDENTITY_USER_CONFIRMED", "uncertainty", "pass", [inputRef], "You confirmed this venue from the provider's candidate details; no independent lookup was available.");
+    if (basis === "user_confirmation") add("IDENTITY_USER_CONFIRMED", "uncertainty", "pass", [inputRef], "You confirmed this venue from the provider's candidate details; no independent lookup or official reference was available. That is your decision, not a second source, so it cannot make the repair verified.");
+    if (basis === "official_public_reference" && repair?.reference) add("IDENTITY_OFFICIAL_REFERENCE", "uncertainty", "pass", [repair.discovery.ref],
+      `A page from ${repair.reference.publisher}, reviewed by the owner, names this venue, city and country and agrees with the provider record.`);
+    if (repair?.reference && referenceConflicts(repair.reference, repair.proposed)) add("FACT_CONFLICT", "integrity", "fail", [repair.discovery.ref],
+      "The reviewed official page contradicts the provider's record for this identity (name, city or country). The replacement is rejected.");
     // Taste evidence: the common-set ranking when it returned the entity; for a replacement only, otherwise the position
     // in Qloo's own discovery for the confirmed signal (one query, ordinal only). Neither is a preference probability.
     // Evidence is keyed by the provider ID the query was about. A proposal is its own subject even before the user has
@@ -295,14 +301,15 @@ async function execute(engine: Engine, rawInput: unknown, options: AuditOptions)
         for (const entity of proposals) checks.push(await lookup(entity.name, "place", "Revalidate"));
         for (const [i, entity] of proposals.entries()) {
           const slot = targets[i]!.candidate_id; const candidateId = `repair:${runId}:${i}`;
-          const { audit: revalidation, basis } = auditFull(candidateId, checks[i], commonRank, [], { proposed: entity, discovery, slot });
+          const reference = referenceFor(entity);
+          const { audit: revalidation, basis } = auditFull(candidateId, checks[i], commonRank, [], { proposed: entity, discovery, slot, reference });
           if (revalidation.entity_id !== null && revalidation.entity_id !== entity.id) {
             revalidation.findings.push({ code: "REVALIDATION_ID_MISMATCH", category: "integrity", state: "fail", constraint_id: null,
               evidence_refs: [discovery.ref, checks[i]!.ref], explanation: "Independent lookup did not confirm the discovered identity." });
             revalidation.verdict = "BLOCKED";
           }
           repairs.push({ replaces: slot, replacement_candidate_id: candidateId, proposed_entity_id: entity.id, discovery_evidence_refs: [discovery.ref],
-            lookup_evidence_ref: checks[i]!.ref, revalidation, accepted: revalidation.verdict === "PASS", identity_basis: basis });
+            lookup_evidence_ref: checks[i]!.ref, revalidation, accepted: repairAccepted(revalidation.verdict, basis), identity_basis: basis, corroboration: reference });
         }
       }
     }
@@ -339,6 +346,7 @@ async function execute(engine: Engine, rawInput: unknown, options: AuditOptions)
     pending_confirmations: [...blockingConfirmations(), ...pendingReplacementConfirmations(repairs, decisions)], evidence,
     limitations: [origin,
       "Identities resolve only through your explicit confirmation among provider candidates (or an independent lookup for a proposed replacement); TasteGate never selects a provider ID by rank, count or label.",
+      "A replacement is VERIFIED only when a second source corroborates its identity (an independent provider lookup or a registered official public reference); your confirmation alone keeps it at 'evidence insufficient'.",
       "Operations without an exactly matching verified recording or live authorization are UNAVAILABLE; unavailable evidence is never treated as negative evidence.",
       "Qloo query.affinity is query-relative ordering evidence only: not comparable across queries and not a probability that a person will like a venue.",
       "City checks compare the provider geocode.city exactly; borough-level normalization is unverified. Opening hours, live music and availability are not verified.",
