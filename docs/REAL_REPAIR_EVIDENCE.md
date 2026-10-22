@@ -1,5 +1,7 @@
 # Real repair evidence
 
+> **Current, 2026-10-23: one real recorded REPAIR_VERIFIED is established.** Exact approved P07 response, observed-schema admission, independent official name/branch and separately bound country evidence, and all ten mandatory revalidation checks support one replacement. Its original slot lacked identity evidence; the whole plan is still UNKNOWN/partial. [Current evidence](FINAL_QLOO_EVIDENCE_STATUS.md) · [actual response review](P07_REAL_RESPONSE_REVIEW.md). Earlier absence statements below are historical.
+
 2026-10-22, Pacific/Auckland. **REAL_REPAIR = NOT_ESTABLISHED.**
 
 | Evidence path | Observed result | Limit |

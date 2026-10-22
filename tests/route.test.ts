@@ -35,7 +35,7 @@ describe("catalog and recorded-evidence boundary", () => {
     const catalog = CatalogSchema.parse(await response.json());
     // Live is locked unless this machine has a credential AND an owner-created grant; the shared test environment has neither.
     expect(catalog.modes).toEqual({ synthetic: "AVAILABLE", recorded_live: recordedHere ? "AVAILABLE" : "UNAVAILABLE", live: catalog.live_gate.status });
-    expect(catalog.scenarios.map((s) => s.mode)).toEqual(["recorded_live", ...Array(7).fill("fixture")]);
+    expect(catalog.scenarios.map((s) => s.mode)).toEqual(["recorded_live", "recorded_live", ...Array(7).fill("fixture")]);
     for (const h of catalog.recorded_history) expect(Object.keys(h).sort()).toEqual(expect.arrayContaining(["attempt_id", "endpoint", "http_status", "outcome", "probe", "recorded_at", "response_bytes"]));
     expect(JSON.stringify(catalog)).not.toMatch(/qloo-ref:|sha256|entity_id/);
   });

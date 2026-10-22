@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/browser", workers: 1, retries: 0,
+  outputDir: process.env.TASTEGATE_BROWSER_OUTPUT_DIR ?? "test-results",
   reporter: [["list"], ["json", { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ?? ".artifacts/chromium-report.json" }]],
   use: { baseURL: "http://127.0.0.1:3100", browserName: "chromium", viewport: { width: 1280, height: 960 } },
   webServer: {

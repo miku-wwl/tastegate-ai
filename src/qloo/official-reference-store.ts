@@ -15,9 +15,17 @@ const Entry = z.strictObject({
   source_capture: z.strictObject({ filename: z.string().regex(/^[a-z0-9-]{1,80}\.txt$/), retrieved_utc: z.iso.datetime(),
     retrieval: z.literal("INDEPENDENT_OFFICIAL_PAGE_CAPTURE"), retrieved_url: PublicReferenceSchema.shape.url,
     exact_excerpts: z.strictObject({ name: z.string().min(1).max(500), city: z.string().min(1).max(500), country: z.string().min(1).max(500) }) }),
+  country_capture: z.strictObject({ filename: z.string().regex(/^[a-z0-9-]{1,80}\.txt$/), retrieved_utc: z.iso.datetime(),
+    retrieval: z.literal("INDEPENDENT_OFFICIAL_PAGE_CAPTURE"), retrieved_url: PublicReferenceSchema.shape.url }).optional(),
 });
 const Registry = z.strictObject({ revision: z.literal("tastegate.official-reference-registry.v1"), entries: z.array(Entry).max(6) });
 const normalize = (s: string) => s.normalize("NFKC").trim().toLowerCase();
+// Only explicit ISO aliases and a complete New York postal city line, never loose substring matching.
+const supports = (field: string, excerpt: string, expected: string) => {
+  const x = normalize(excerpt), y = normalize(expected);
+  return x === y || (field === "country" && y === "us" && ["usa","united states","united states of america"].includes(x)) ||
+    (field === "city" && y === "new york" && /^new york, ny \d{5}(-\d{4})?$/.test(x));
+};
 export async function loadOfficialReferences(projectRoot: string, trustedOfficialHosts: readonly string[]): Promise<ReadonlyMap<string, PublicReference>> {
   assertServer();
   try {
@@ -34,11 +42,21 @@ export async function loadOfficialReferences(projectRoot: string, trustedOfficia
           Date.parse(entry.source_capture.retrieved_utc) > Date.parse(ref.reviewed_utc) ||
           Date.parse(ref.reviewed_utc) > Date.now()) throw new Error();
       const content = new TextDecoder("utf-8", { fatal: true }).decode(source);
+      let countryContent = content;
+      if (!!entry.country_capture !== !!ref.country_reference) throw new Error();
+      if (entry.country_capture && ref.country_reference) {
+        const doc = entry.country_capture, bound = ref.country_reference, u = new URL(bound.url);
+        const countryBytes = await readPrivateSmall(root, [...base, doc.filename],262144);
+        if (!trustedOfficialHosts.includes(u.hostname) || u.search || u.hostname.endsWith(".qloo.com") || u.hostname === "qloo.com" ||
+            doc.retrieved_url !== bound.url || !countryBytes || captureSha256(countryBytes) !== bound.content_sha256 ||
+            Date.parse(doc.retrieved_utc)>Date.parse(bound.reviewed_utc) || Date.parse(bound.reviewed_utc)>Date.now()) throw new Error();
+        countryContent = new TextDecoder("utf-8",{fatal:true}).decode(countryBytes);
+      }
       const expected = { name: ref.asserted_name, city: ref.asserted_city, country: ref.asserted_country };
       for (const field of ["name", "city", "country"] as const) {
         const excerpt = entry.source_capture.exact_excerpts[field];
-        if (!content.split(/\r?\n/).some((line) => normalize(line) === normalize(excerpt)) ||
-            normalize(excerpt) !== normalize(expected[field])) throw new Error();
+        if (!(field === "country" ? countryContent : content).split(/\r?\n/).some((line) => normalize(line) === normalize(excerpt)) ||
+            !supports(field,excerpt,expected[field])) throw new Error();
       }
       const id = providerRef("entity", entry.provider_entity_id);
       if (refs.has(id)) throw new Error();

@@ -5,10 +5,21 @@ import { EvidenceLinks } from "./evidence-links";
 import { SourceBadge } from "./report-view";
 export function CulturalComparisonView({ report }: { report: AnyAuditReport }) {
   const c = culturalComparison(report), name = (id: string) => c.rows.find((r) => r.candidate_id === id)?.name ?? id;
+  const p07 = report.evidence.find((e) => e.source_mode !== "fixture" && e.capture?.probe === "P07" && e.snapshot.kind === "discover_places");
+  const pool = p07?.snapshot.kind === "discover_places" ? p07.snapshot.candidates : [];
   return <section className="panel cultural-comparison" aria-labelledby="cultural-comparison-title" data-testid="cultural-comparison">
     <div className="section-head"><h3 id="cultural-comparison-title">What cultural evidence changes</h3><SourceBadge mode={report.source_mode} /></div>
     <p>First establish identity and hard constraints. Then compare cultural priority <strong>within the same query</strong>. A higher rank never rescues an invalid candidate.</p>
     {report.source_mode === "fixture" && <p className="badge tone-synthetic">SYNTHETIC · authored cultural ordering; not a real Qloo result</p>}
+    {p07 && <details className="real-discovery"><summary>Real Qloo discovery: {pool.length} candidates, separate verification</summary>
+      <p className="small">One recorded artist-to-place query supplies this cultural order. All geography below is provider-reported.
+        The locality name was ambiguous; the requested boundary is not verified. Only attempted replacements have a revalidation outcome.</p>
+      <div className="table-wrap"><table><caption className="sr-only">The P07 query pool, not a list of verified replacements</caption>
+        <thead><tr><th>Candidate</th><th>Reported geography</th><th>Position in this query</th><th>Verification</th></tr></thead>
+        <tbody>{pool.map((e,i) => {const repair=report.repairs.find((r)=>r.proposed_entity_id===e.id);return <tr key={e.id}>
+          <th scope="row">{e.name}</th><td>{e.city ?? "Unknown city"}, {e.country ?? "Unknown country"}</td><td>{i+1}</td>
+          <td>{repair ? repair.accepted ? "Verified replacement — see mandatory checks" : "Attempted; not verified" : "Not independently revalidated"}</td></tr>;})}</tbody>
+      </table></div><EvidenceLinks report={report} refs={[p07.evidence_id]} /></details>}
     <details><summary>Candidate evidence and eligibility ({c.rows.length} assessed)</summary>
     <div className="table-wrap"><table className="results-table">
       <caption>Candidate evidence and eligibility for this run</caption>

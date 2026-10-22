@@ -23,12 +23,12 @@ import { loadLocalP01Config } from "./p01-local-env";
 async function checkedDirectory(projectRoot: string, probe: ExecutableProbe): Promise<string> {
   const root = await realpath(projectRoot); let folder = root;
   for (const part of ["private", "qloo-probes", probe.toLowerCase(), "attempts"]) {
-    folder = join(folder, part);
+    folder = join(/*turbopackIgnore: true*/ folder, part);
     try { await mkdir(folder, { mode: 0o700 }); } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw new Error("PRIVATE_EVIDENCE_UNAVAILABLE");
     }
     const info = await lstat(folder);
-    if (info.isSymbolicLink() || !info.isDirectory() || await realpath(folder) !== folder ||
+    if (info.isSymbolicLink() || !info.isDirectory() || await realpath(/*turbopackIgnore: true*/ folder) !== folder ||
         (process.platform !== "win32" && (info.mode & 0o077) !== 0)) throw new Error("PRIVATE_EVIDENCE_UNAVAILABLE");
   }
   return folder;
@@ -240,7 +240,7 @@ export async function liveProbeFromPrivateCheckpoint(projectRoot: string, probe:
     const root = await realpath(projectRoot);
     for (const relative of ["private", "private/qloo-probes"]) {
       const parentPath = resolve(root, relative); const parent = await lstat(parentPath);
-      if (parent.isSymbolicLink() || !parent.isDirectory() || await realpath(parentPath) !== parentPath) return def.blocked();
+      if (parent.isSymbolicLink() || !parent.isDirectory() || await realpath(/*turbopackIgnore: true*/ parentPath) !== parentPath) return def.blocked();
     }
     checkpoint = await privateJson(resolve(root, `private/qloo-probes/${probe.toLowerCase()}-checkpoint.json`), 8192);
   } catch { return def.blocked(); }

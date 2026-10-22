@@ -75,7 +75,8 @@ describe("Dockerfile", () => {
   it("is multi-stage, unprivileged, health-checked and starts through the validating start script", async () => {
     const d = await text("Dockerfile"); const from = d.split("\n").filter((l) => l.startsWith("FROM "));
     expect(from).toHaveLength(3); expect(from.map((l) => l.split(" AS ")[1])).toEqual(["deps", "build", "runner"]);
-    expect(from.every((l) => /^FROM node:\$\{NODE_VERSION\}-alpine AS /.test(l))).toBe(true); expect(d).toMatch(/^ARG NODE_VERSION=\d+$/m); expect(d).not.toMatch(/:latest/);
+    expect(from.every((l) => /^FROM node:\$\{NODE_VERSION\}-alpine@\$\{NODE_IMAGE_DIGEST\} AS /.test(l))).toBe(true);
+    expect(d).toMatch(/^ARG NODE_VERSION=\d+$/m);expect(d).toMatch(/^ARG NODE_IMAGE_DIGEST=sha256:[a-f0-9]{64}$/m);expect(d).not.toMatch(/:latest/);
     const runner = d.slice(d.indexOf("AS runner"));
     expect(runner).toMatch(/^USER tastegate$/m); expect(runner).not.toMatch(/^USER root/m); expect(runner).toMatch(/adduser -S -u 10001/);
     expect(runner).toMatch(/^HEALTHCHECK /m); expect(runner).toMatch(/\/api\/health/); expect(runner).toMatch(/^CMD \["node", "scripts\/start-production\.mjs"\]$/m); expect(runner).toMatch(/^EXPOSE 3000$/m);

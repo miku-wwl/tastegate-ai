@@ -8,8 +8,36 @@ import { AuditReportSchema, ProviderAuditReportSchema } from "../../src/domain/r
 // the app must stay synthetic/recorded only, can never start a live request, and must never echo that canary key.
 const canary = "local-browser-canary-not-a-provider-key";
 const recordedHere = existsSync("private/qloo-probes/p05/attempts/154bd4c0-ea64-49c5-ad95-cb57efd7647a/response.raw.json");
+const p07Here = existsSync("private/venue-references/registry.json") && existsSync("private/qloo-probes/p07/attempts/598e608d-ba24-4dbb-96c5-5335493e6cce/replay-admission.v1.json");
 // New private screenshots belong to this run; never overwrite a prior phase's review evidence.
 const PUBLIC_SHOTS = process.env.TASTEGATE_PUBLIC_SCREENSHOT_DIR ?? ".artifacts/screens"; const PRIVATE_SHOTS = "private/browser-runs/" + randomUUID();
+test("admitted P07 verifies one replacement with independent sources while the plan stays partial",async({page})=>{
+ test.skip(!p07Here,"Owner-private admitted P07 and source registry unavailable");
+ const g=guard(page);await page.goto("/");
+ await page.getByRole("button",{name:"Try the recorded Qloo case",exact:true}).click();
+ await expect(heading(page,"Confirm identities")).toBeFocused();
+ await page.getByRole("radio",{name:/^Radiohead — artist/}).check();
+ await page.getByRole("radio",{name:/^Blue Note — place/}).check();
+ const pending=auditResponse(page);await page.getByRole("button",{name:/Continue the audit/}).click();
+ const report=ProviderAuditReportSchema.parse(await (await pending).json());
+ expect(report.usage.qloo_dispatches).toBe(0);expect(report.repair_outcomes.map(o=>o.status)).toEqual(["REPAIR_VERIFIED"]);
+ await expect(page.getByRole("status")).toHaveText("Final status: UNKNOWN. Completion: partial.");
+ await page.getByRole("button",{name:"Next: Repair"}).click();
+ await expect(page.getByText("Repair verified").first()).toBeVisible();
+ const assessment=page.getByTestId("repair-assessment").first();
+ await expect(assessment).toContainText("second source: official public page");
+ await assessment.getByText("Mandatory evidence (10 of 10 met)",{exact:true}).click();
+ await expect(assessment.getByRole("link",{name:"Venue identity and branch"})).toBeVisible();
+ await expect(assessment.getByRole("link",{name:"Country corroboration"})).toBeVisible();
+ await expect(page.getByText(/NYC filtering was requested/)).toBeVisible();
+ await mkdir(PRIVATE_SHOTS,{recursive:true});await shot(page,PRIVATE_SHOTS,"p07-verified-repair");
+ await page.getByRole("button",{name:"Next: Compare"}).click();
+ await page.getByText("Real Qloo discovery: 3 candidates, separate verification",{exact:true}).click();
+ await expect(page.getByText("Not independently revalidated",{exact:true})).toHaveCount(2);
+ await shot(page,PRIVATE_SHOTS,"p07-partial-comparison");
+ await page.setViewportSize({width:390,height:844});expect(await overflows(page)).toBe(false);
+ expect(await overflows(page)).toBe(false);expect(g.externalRequests).toEqual([]);expect(g.errors).toEqual([]);
+});
 const RUN_ARTIFACTS = ".artifacts/browser-runs/" + randomUUID();
 function guard(page: Page) {
   const externalRequests: string[] = []; const errors: string[] = [];
@@ -104,6 +132,7 @@ test("HTTP server rejects live mode, expanded budgets, forgery and every live at
 
 test("the live gate is visible, labelled and cannot be started from the page", async ({ page }) => {
   const g = guard(page); await page.goto("/");
+  await page.getByText("Technical evidence and owner controls", { exact: true }).click();
   const card = page.getByRole("region", { name: /Live Qloo: locked/ });
   await expect(card).toBeVisible(); await expect(card).toContainText("switched off by the operator");
   await card.getByText("How the owner unlocks it").click(); await expect(card).toContainText("It is never sent to the browser");

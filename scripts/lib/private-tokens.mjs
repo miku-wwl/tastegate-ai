@@ -54,10 +54,15 @@ export async function deriveSensitiveTokens(root, { publicAttemptIds = new Set()
   const allow = new Set([...extraAllow, ...publicAttemptIds, ...(existsSync(base) ? await publicIdentifiers(base) : [])]);
   const add = (token, category) => { if (!allow.has(token) && !tokens.has(token)) tokens.set(token, category); };
   if (existsSync(base)) {
-    for await (const { attempt, file } of rawCaptures(base)) {
+    for await (const { probe, attempt, file } of rawCaptures(base)) {
       captures++;
-      const found = new Map(); collect(JSON.parse(await readFile(file, "utf8")), found);
+      const value = JSON.parse(await readFile(file, "utf8"));
+      const found = new Map(); collect(value, found);
       for (const [token, category] of found) if (token !== attempt && !publicAttemptIds.has(token)) add(token, category);
+      if (probe === "p07") for (const entity of value?.results?.entities ?? []) {
+        for (const token of [entity.name, entity.properties?.address, entity.properties?.website])
+          if (typeof token === "string" && token.length >= 8) add(token, "private_p07_place_fact");
+      }
       add(sha256(await readFile(file)), "raw_capture_sha256");
     }
     // Private integrity manifests and identity reviews hold hashes and selected identifiers.
@@ -70,6 +75,14 @@ export async function deriveSensitiveTokens(root, { publicAttemptIds = new Set()
           add(value, /sha256/.test(key) ? "private_file_sha256" : "review_identifier");
         if (value && typeof value === "object") { const nested = new Map(); collect(value, nested); nested.forEach((c, t) => add(t, c)); }
       }
+    }
+  }
+  const registry = join(root, "private", "venue-references", "registry.json");
+  if (existsSync(registry)) {
+    const value = JSON.parse(await readFile(registry, "utf8"));
+    for (const entry of value.entries ?? []) {
+      for (const token of [entry.provider_entity_id,entry.reference?.content_sha256,entry.reference?.country_reference?.content_sha256])
+        if (typeof token === "string" && token.length >= 8) add(token,"private_reference_binding");
     }
   }
   for (const name of [".env.local", ".env"]) {

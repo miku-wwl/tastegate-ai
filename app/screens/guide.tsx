@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 // Orientation for someone seeing TasteGate for the first time. Static copy only: nothing here reads a report, a provider value or a
 // private file, so it can appear in a public screenshot.
-export function HowItWorks({ onStartGuide, onStartPriority, busy }: { onStartGuide?: () => void; onStartPriority?: () => void; busy?: boolean }) {
+export function HowItWorks({ onStartGuide, onStartPriority, onStartRecorded, onCustom, busy }: { onStartGuide?: () => void; onStartPriority?: () => void; onStartRecorded?: () => void; onCustom?: () => void; busy?: boolean }) {
   return <section className="how" aria-labelledby="how-title">
     <h2 id="how-title" className="how-title">How it works, in 30 seconds</h2>
     <ol className="how-steps">
@@ -14,8 +14,12 @@ export function HowItWorks({ onStartGuide, onStartPriority, busy }: { onStartGui
       <li><span className="how-num" aria-hidden="true">4</span><strong>It says what it cannot prove.</strong><span className="muted small">UNKNOWN means “no evidence”, never “wrong”. Nothing is booked or bought.</span></li>
     </ol>
     {onStartGuide && <div className="actions"><button type="button" className="primary" onClick={onStartGuide} disabled={busy}>{busy ? "Starting…" : "Start the 2-minute guided demo"}</button>
-      {onStartPriority && <button type="button" className="secondary" onClick={onStartPriority} disabled={busy}>Compare two valid choices</button>}
+      {onCustom && <button type="button" className="secondary" onClick={onCustom} disabled={busy}>Audit your own recommendations</button>}
       <span className="muted small">Synthetic data, no setup, no network request to Qloo.</span></div>}
+    {onStartPriority && <p className="small demo-extra"><button type="button" className="link" onClick={onStartPriority} disabled={busy}>Compare two valid choices</button>
+      {" "}— see what cultural ordering adds after both choices pass the rules. Authored synthetic evidence.</p>}
+    {onStartRecorded && <p className="small demo-extra"><button type="button" className="secondary" onClick={onStartRecorded} disabled={busy}>Try the recorded Qloo case</button>
+      {" "}Owner-local provider evidence. Confirm identities, then inspect a verified replacement within a still-partial plan. No fresh Qloo request.</p>}
   </section>;
 }
 

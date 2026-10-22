@@ -16,7 +16,7 @@ const Attempt = z.object({ record_revision: z.literal("tastegate.probe-attempt.v
   state: z.literal("RESERVED_NO_AUTOMATIC_REPLAY") });
 export async function inspectP07Capture(projectRoot: string) {
   assertServer();
-  const base = { probe: "P07" as const, replay: "NOT_ENABLED" as const, real_repair: "NOT_ESTABLISHED" as const };
+  const base = { probe: "P07" as const, replay: "NOT_GRANTED_BY_INTAKE" as const, real_repair: "NOT_ASSESSED_BY_INTAKE" as const };
   try {
     const root = await realpath(projectRoot), ledger = await inspectPrivateProbeLedger(root, "P07");
     if (!ledger.reserved_attempts) return { ...base, status: "NOT_EXECUTED" as const };
@@ -40,11 +40,11 @@ export async function inspectP07Capture(projectRoot: string) {
     const inspected = inspectCapturedBody(bytes);
     const seal = await readPrivateSmall(root, [...parts, "capture-review-seal.json"], 16384);
     if (seal) await verifyCaptureSeal(root, id);
-    return { ...base, status: "CAPTURED_AWAITING_SCHEMA_REVIEW" as const, http_status: summary.http_status,
+    return { ...base, status: "CAPTURED_TRANSPORT_VALIDATED" as const, http_status: summary.http_status,
       response_bytes: bytes.length, elapsed_ms: summary.elapsed_ms, transport_settled: true,
       preregistered_interpretation: inspected.interpretation,
       interpretation_scope: "PREREGISTERED_CLASSIFIER_NOT_OBSERVED_SCHEMA_ADMISSION" as const,
       review_seal: seal ? "INTACT_INTEGRITY_ONLY" as const : "NOT_SEALED" as const,
-      provider_projection: "P07_OBSERVED_SCHEMA_REVIEW_REQUIRED" as const };
+      provider_projection: "NOT_ADMITTED_BY_INTAKE" as const };
   } catch { throw new Error("P07_INTAKE_REVIEW_REQUIRED"); }
 }

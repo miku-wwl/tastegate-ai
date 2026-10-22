@@ -1,5 +1,7 @@
 # P07: geography-filtered discovery for NYC — readiness and execution gate
 
+> **Current, 2026-10-23: EXECUTED ONCE, REVIEWED, SEALED AND ADMITTED FOR EXACT-CONTEXT REPLAY. DO NOT PREPARE OR EXECUTE AGAIN.** HTTP 200, 55,555 bytes, 3,388.801 ms, one settled dispatch. One independently corroborated replacement is verified; whole plan UNKNOWN/partial. Locality boundary enforcement remains unverified. [Actual response](P07_REAL_RESPONSE_REVIEW.md) · [current evidence](FINAL_QLOO_EVIDENCE_STATUS.md). Pre-execution sections below are historical analysis, not an active gate.
+
 > **Phase 3D/4A, 2026-10-22.** Base `0d55ca5425de711b6d28dddf7034a52a62cc14bb`. P07 remains **NOT EXECUTED / AWAITING_EXACT_APPROVAL**. The offer is unexpired and will be freshly revalidated by current code before the owner sees its sentence; no stale sentence is copied into this document or the ZIP. Current official parameter documentation was re-fetched (HTTP 200); the place/locality conflict remains. Consent verification now also binds the receipt's literal URL, destination and registration/expiry/consumption times.
 
 `node scripts/inspect-p07.mjs` is a read-only local intake command: currently `NOT_EXECUTED`. It verifies known transport/consent/ledger records and cap before inspecting captured bytes. A test double is explicitly `TEST_DOUBLE_ONLY`. A captured live body remains `P07_OBSERVED_SCHEMA_REVIEW_REQUIRED`; the pre-registered classifier alone grants no provider-schema admission, recorded replay or verified repair.

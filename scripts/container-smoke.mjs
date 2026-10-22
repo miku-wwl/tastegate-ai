@@ -13,7 +13,7 @@ import { forbiddenPathLabels } from "./lib/deploy-scan.mjs";
 import { isExcluded, parseDockerignore } from "./lib/dockerignore.mjs";
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const tag = "tastegate-ai:smoke-local"; const name = `tastegate-smoke-${process.pid}`;
+const tag = "tastegate-ai:smoke-" + Date.now(); const name = `tastegate-smoke-${process.pid}`;
 const checks = []; const facts = {};
 const record = (label, pass, detail = "") => { checks.push({ name: label, status: pass ? "PASS" : "FAIL", detail: pass ? "" : detail }); process.stdout.write(`${pass ? "PASS   " : "FAIL   "} ${label}${pass || !detail ? "" : ` — ${detail}`}\n`); };
 const docker = (args, options = {}) => spawnSync("docker", args, { encoding: "utf8", cwd: project, maxBuffer: 64 * 1024 * 1024, ...options });
@@ -77,9 +77,10 @@ try {
   }
 } catch (error) { record("container smoke test", false, error instanceof Error ? error.message : "error"); }
 finally { docker(["rm", "-f", name]); rmSync(stage, { recursive: true, force: true }); }
-mkdirSync(join(project, ".artifacts"), { recursive: true });
+const reportDir = resolve(project, process.env.TASTEGATE_VERIFICATION_OUTPUT_DIR ?? ".artifacts");
+mkdirSync(reportDir, { recursive: true });
 const summary = { PASS: checks.filter((c) => c.status === "PASS").length, FAIL: checks.filter((c) => c.status === "FAIL").length };
-writeFileSync(join(project, ".artifacts", "container-smoke.json"), JSON.stringify({ evidence_kind: "ACTUAL_LOCAL_CONTAINER_SMOKE", executed_at_utc: new Date().toISOString(), docker: docker(["version", "--format", "{{.Server.Version}}"]).stdout.trim(),
+writeFileSync(join(reportDir, "container-smoke.json"), JSON.stringify({ evidence_kind: "ACTUAL_LOCAL_CONTAINER_SMOKE", executed_at_utc: new Date().toISOString(), docker: docker(["version", "--format", "{{.Server.Version}}"]).stdout.trim(),
   note: "measured on the development machine; not a statement about any target host; nothing was pushed or deployed", facts, summary, checks }, null, 2) + "\n");
 process.stdout.write(`\n${summary.PASS} passed, ${summary.FAIL} failed. ${JSON.stringify(facts)}\n`);
 process.exitCode = summary.FAIL ? 1 : 0;

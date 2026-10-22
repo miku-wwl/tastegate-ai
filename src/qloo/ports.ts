@@ -4,7 +4,7 @@ export type Signals = { preference_entity_ids: string[]; preference_tag_ids: str
 export type LookupRequest = { query: string; requested_kind: "artist" | "movie" | "place" };
 export type RankRequest = Signals & { candidate_entity_ids: string[] };
 export type DiscoveryRequest = Signals & { exclude_entity_ids: string[];
-  signal_scope?: InsightsPolicy["signal_scope"]; take?: number; exclusion?: InsightsPolicy["discovery_exclusion"] };
+  signal_scope?: InsightsPolicy["signal_scope"]; take?: number; exclusion?: InsightsPolicy["discovery_exclusion"]; discovery_profile?: InsightsPolicy["discovery_profile"] };
 export interface CallContext { runId: string; callId: string; signal: AbortSignal }
 export type FixtureObservation = { source_mode: "fixture"; fixture_id: string; snapshot: Snapshot };
 export interface FixtureQlooAdapter {

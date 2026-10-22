@@ -96,7 +96,7 @@ const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest(
 export type RecordedOutcome = "REPLAYABLE" | "RESPONSE_TOO_LARGE_NOT_SAVED" | "REVIEW_REQUIRED" | "RESPONSE_UNUSABLE" | "UNEXPECTED_ENTITY" | "INCOMPATIBLE_SCORES";
 // Public metadata only (never bodies, IDs or hashes). `recorded_at`/`http_status`/`response_bytes` are null only for an
 // executed-but-unreviewed P06, whose files are deliberately not read before review.
-export type RecordedHistory = { probe: Spec["probe"] | "P06"; attempt_id: string; endpoint: Capture["endpoint"]; recorded_at: string | null;
+export type RecordedHistory = { probe: Spec["probe"] | "P06" | "P07"; attempt_id: string; endpoint: Capture["endpoint"]; recorded_at: string | null;
   http_status: number | null; outcome: RecordedOutcome; response_bytes: number | null; shortlist_class?: ShortlistClass };
 export type ShortlistRecording =
   | { state: "NOT_EXECUTED" } | { state: "REVIEW_REQUIRED" }
@@ -293,13 +293,15 @@ export function createRecordedAdapter(set: VerifiedRecordings, options: Recorded
       const d = set.discovery;
       // Replay only the exact recorded context: one artist signal, no tags or geography, take=1, client-side exclusion.
       if (request.preference_tag_ids.length || digest(request.preference_entity_ids) !== digest([d.signalRef]) || request.take !== d.take ||
-          request.exclusion !== "client" || request.signal_scope !== "first_confirmed_artist")
+          request.exclusion !== "client" || request.signal_scope !== "first_confirmed_artist" ||
+          (d.capture.probe === "P07" ? request.discovery_profile !== "p07-nyc-v1" : request.discovery_profile !== undefined))
         return unavailable({ operation: "discover_places", ...request }, "NOT_CAPTURED",
           "No recording matches this exact discovery context; a geography-constrained discovery needs a new approved request.");
       const excluded = d.found.filter((f) => request.exclude_entity_ids.includes(f.entity.id));
       const kept = d.found.filter((f) => !request.exclude_entity_ids.includes(f.entity.id)).slice(0, request.take);
       return observe(d.capture, { kind: "discover_places", preference_entity_ids: request.preference_entity_ids, preference_tag_ids: request.preference_tag_ids,
         exclude_entity_ids: request.exclude_entity_ids, signal_scope: request.signal_scope, take: request.take, exclusion: request.exclusion,
+        ...(request.discovery_profile ? { discovery_profile: request.discovery_profile } : {}),
         client_excluded_ids: excluded.map((f) => f.entity.id), scores: [...kept, ...excluded].map((f) => ({ entity_id: f.entity.id, query_affinity: f.query_affinity })),
         candidates: kept.map((f) => f.entity) });
     },

@@ -9,12 +9,12 @@ import { observeSearch } from "./search-observation";
 async function readPrivate(root: string, name: string, cap: number) {
   let path = root;
   for (const part of ["private", "qloo-probes", "p01", "attempts", SAVED_P01_ATTEMPT]) {
-    path = join(path, part); const info = await lstat(path);
-    if (!info.isDirectory() || info.isSymbolicLink() || await realpath(path) !== path) throw new Error("P01_REUSE_REVIEW_REQUIRED");
+    path = join(/*turbopackIgnore: true*/ path, part); const info = await lstat(/*turbopackIgnore: true*/ path);
+    if (!info.isDirectory() || info.isSymbolicLink() || await realpath(/*turbopackIgnore: true*/ path) !== path) throw new Error("P01_REUSE_REVIEW_REQUIRED");
   }
-  path = join(path, name); const info = await lstat(path);
-  if (!info.isFile() || info.isSymbolicLink() || info.size > cap || await realpath(path) !== path) throw new Error("P01_REUSE_REVIEW_REQUIRED");
-  const bytes = await readFile(path);
+  path = join(/*turbopackIgnore: true*/ path, name); const info = await lstat(/*turbopackIgnore: true*/ path);
+  if (!info.isFile() || info.isSymbolicLink() || info.size > cap || await realpath(/*turbopackIgnore: true*/ path) !== path) throw new Error("P01_REUSE_REVIEW_REQUIRED");
+  const bytes = await readFile(/*turbopackIgnore: true*/ path);
   if (bytes.length > cap) throw new Error("P01_REUSE_REVIEW_REQUIRED");
   return bytes;
 }

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { replacementTarget } from "../audit/rules";
 import { runAudit, runAuthorizedLiveAudit, runRecordedAudit } from "../audit/workflow";
 import { CUSTOM_INPUT_LIMITS, CUSTOM_SCENARIO_ID, CatalogSchema, LIVE_ACK, MAX_REQUEST_BYTES, REQUEST_SOURCES, type Catalog } from "../domain/catalog";
-import { ConfirmationsSchema, type AuditInput, type Confirmation } from "../domain/contracts";
+import { ConfirmationsSchema, type AuditInput, type Confirmation, type PublicReference } from "../domain/contracts";
 import { normalizeCustomInput, type CustomInputIssue } from "../domain/custom-input";
 import { ScenarioIdSchema, getScenario, scenarioLabels, type ScenarioId } from "../fixtures/scenarios";
 import { createFixtureAdapter } from "../qloo/fixture-adapter";
@@ -11,7 +11,7 @@ import { loadLiveGrant, readLiveBudget, type GrantEnvironment } from "../qloo/li
 import type { LiveSend } from "../qloo/live-transport";
 import { createEmptyRecordedAdapter, createRecordedAdapter, recordedCoverage, type VerifiedRecordings } from "../qloo/recorded-adapter";
 import type { QlooServerConfig } from "../qloo/server-config";
-import { RECORDED_INSIGHTS_POLICY, RECORDED_SCENARIO_ID, RECORDED_SCENARIO_LABEL, getRecordedScenarioInput } from "../scenarios/recorded-nyc";
+import { RECORDED_INSIGHTS_POLICY, RECORDED_SCENARIO_ID, RECORDED_SCENARIO_LABEL, getRecordedScenarioInput, P07_INSIGHTS_POLICY, P07_SCENARIO_ID, P07_SCENARIO_LABEL, getP07ScenarioInput } from "../scenarios/recorded-nyc";
 
 // The HTTP-independent core of /api/audit. The route is a thin adapter around it; tests drive it with injected
 // dependencies so no network, credential or private file is needed.
@@ -26,6 +26,8 @@ import { RECORDED_INSIGHTS_POLICY, RECORDED_SCENARIO_ID, RECORDED_SCENARIO_LABEL
 export type AuditServiceDeps = {
   projectRoot: string;
   recordings: () => Promise<VerifiedRecordings>;
+  p07Recordings?: () => Promise<VerifiedRecordings>;
+  officialReferences?: () => Promise<ReadonlyMap<string, PublicReference>>;
   liveConfig: () => QlooServerConfig;
   send: LiveSend;
   now?: () => number;
@@ -39,7 +41,7 @@ const fail = (status: number, error: string, extra: Record<string, unknown> = {}
 const LIVE_ATTEMPTS_PER_MINUTE = 6;
 
 const requestSchema = z.strictObject({
-  scenario: z.union([ScenarioIdSchema, z.literal(RECORDED_SCENARIO_ID)]).optional(),
+  scenario: z.union([ScenarioIdSchema, z.literal(RECORDED_SCENARIO_ID), z.literal(P07_SCENARIO_ID)]).optional(),
   input: z.unknown().optional(),
   source: z.enum(REQUEST_SOURCES).optional(),
   confirmations: ConfirmationsSchema.optional(),
@@ -79,6 +81,7 @@ function plan(data: z.infer<typeof requestSchema>): PlanResult {
   }
   let input: AuditInput; let scenarioId: string;
   if (scenario === RECORDED_SCENARIO_ID) { input = getRecordedScenarioInput(); scenarioId = RECORDED_SCENARIO_ID; }
+  else if (scenario === P07_SCENARIO_ID) { input = getP07ScenarioInput(); scenarioId = P07_SCENARIO_ID; }
   else {
     const normalized = normalizeCustomInput(rawInput);
     // Field paths and fixed reason codes only: the offending value is never echoed.
@@ -86,6 +89,7 @@ function plan(data: z.infer<typeof requestSchema>): PlanResult {
     input = normalized.input; scenarioId = CUSTOM_SCENARIO_ID;
   }
   const effective = source ?? "recorded";
+  if (scenarioId === P07_SCENARIO_ID && effective !== "recorded") return invalid(); // replay only; never dispatches a live query
   if (effective === "fixture") return invalid(); // an authored synthetic world exists only for authored scenarios
   if (effective === "recorded" && live_ack !== undefined) return invalid();
   const targets = new Set([...input.preferences.map((p) => p.id), ...input.recommendations.flatMap((r) => [r.id, replacementTarget(r.id)])]);
@@ -147,15 +151,17 @@ export function createAuditService(deps: AuditServiceDeps) {
   async function catalog(): Promise<Response> {
     try {
       const recorded = await deps.recordings().catch(() => null); const live = await liveGate();
+      const p07 = deps.p07Recordings ? await deps.p07Recordings().catch(() => null) : null;
       const shortlist = recorded?.shortlist.state;
       const body: Catalog = CatalogSchema.parse({
         modes: { synthetic: "AVAILABLE", recorded_live: recorded ? "AVAILABLE" : "UNAVAILABLE", live: live.status },
         scenarios: [
+          ...(deps.p07Recordings ? [{id:P07_SCENARIO_ID,label:P07_SCENARIO_LABEL,mode:"recorded_live" as const,available:!!p07,input:getP07ScenarioInput()}] : []),
           { id: RECORDED_SCENARIO_ID, label: RECORDED_SCENARIO_LABEL, mode: "recorded_live", available: !!recorded, input: getRecordedScenarioInput() },
           ...ScenarioIdSchema.options.map((id) => ({ id, label: scenarioLabels[id], mode: "fixture", available: true, input: getScenario(id).input })),
         ],
         // Public metadata only (probe, attempt, endpoint, time, status, byte count); never bodies, IDs or hashes.
-        recorded_history: recorded ? recorded.history.map((h) => ({ ...h })) : [],
+        recorded_history: (p07 ?? recorded)?.history.map((h) => ({ ...h })) ?? [],
         recorded_coverage: recorded ? recordedCoverage(recorded) : { artist: [], movie: [], place: [], tag: [] },
         pending_request: shortlist === "NOT_EXECUTED" ? { id: "P06", state: "OWNER_APPROVAL_REQUIRED",
           detail: "Shortlist ranking (P06) is prepared but has never been executed. It needs the owner's explicit approval." } :
@@ -178,10 +184,15 @@ export function createAuditService(deps: AuditServiceDeps) {
       try { const fixture = getScenario(chosen.scenario); return Response.json(await runAudit(fixture.input, createFixtureAdapter(fixture.world), { signal: request.signal }), { headers }); }
       catch { return fail(500, "OFFLINE_AUDIT_FAILED"); } // no exception text, fixture internals or configuration
     }
-    const options = { scenarioId: chosen.scenarioId, insightsPolicy: RECORDED_INSIGHTS_POLICY, confirmations: chosen.confirmations, signal: request.signal };
+    const p07 = chosen.scenarioId === P07_SCENARIO_ID;
+    const options = { scenarioId: chosen.scenarioId, insightsPolicy: p07 ? P07_INSIGHTS_POLICY : RECORDED_INSIGHTS_POLICY, confirmations: chosen.confirmations, signal: request.signal };
     if (chosen.source === "recorded") {
       let adapter: ReturnType<typeof createRecordedAdapter>;
-      try { adapter = createRecordedAdapter(await deps.recordings()); }
+      try {
+        const set = p07 ? await deps.p07Recordings?.() : await deps.recordings();
+        if (!set) throw new Error();
+        adapter = createRecordedAdapter(set, p07 ? {references: await deps.officialReferences?.()} : {});
+      }
       catch {
         // The curated recorded scenario IS its recordings, so it cannot run without them. A custom plan can: it is audited with
         // no provider evidence at all (every lookup UNKNOWN), and the report says so.

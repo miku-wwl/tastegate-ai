@@ -1,5 +1,7 @@
 # Qloo cultural value comparison
 
+> **2026-10-23:** frozen strata and 6/50 priority result below are unchanged. A separate P07 case now has one real independently corroborated REPAIR_VERIFIED; its whole plan remains UNKNOWN. No pair of independently corroborated P07 candidates or independent preference gain is established. [Current evidence](FINAL_QLOO_EVIDENCE_STATUS.md).
+
 2026-10-22, Pacific/Auckland. **INDEPENDENT_QUALITY_GAIN = NOT_ESTABLISHED.**
 
 Both arms share initial recommendations, the valid candidate pool, human-confirmed identities, geography, hard constraints and non-cultural evidence. The control keeps input order without cultural fields. Treatment priority can change only under complete coverage within one reviewed query. Tied scores imply no preference; separate queries are never compared. This changes no gate acceptance.

@@ -1,24 +1,43 @@
-# Final judge demo — 2 minutes 45 seconds
+# Final judge demo and reviewer walkthrough
 
-2026-10-22. English storyboard only; **no recording or upload**. Primary local guided path is synthetic repair. The real recorded path demonstrates rejection; a real successful repair is unavailable.
+2026-10-23 NZDT. English script, **2 minutes 45 seconds**. No recording/upload. Public-safe default is synthetic; recorded screens stay owner-local pending display permission.
 
-Start: `npm run build` then `npm start`; open `http://127.0.0.1:3000`. No judge key or live grant is needed. Default public production-safe runs synthetic/custom input only. Owner-private recorded replay requires the existing permitted local development profile and recordings; it is never enabled on a public host by this script.
+Clean start: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run build`, `npm start`; open `http://127.0.0.1:3000`. No key/account needed.
 
-| Time | Scene | English narration |
+| Time | Action | English narration |
 | --- | --- | --- |
-| 0:00–0:20 | Problem / home explainer | “A plausible AI venue recommendation can still be in the wrong city or lack identity evidence. TasteGate audits the plan, repairs only what fails, and says what it cannot prove.” |
-| 0:20–0:35 | Input / Start the 2-minute guided demo | “This sample is authored synthetic data. Nothing here makes a fresh Qloo request.” |
-| 0:35–0:55 | Audit finding | “Here is the precise hard constraint that failed. UNKNOWN is missing evidence, not proof that a venue is bad.” |
-| 0:55–1:15 | Qloo cultural evidence / candidate comparison | “Identity, geography and cultural support are separate. Query position is relative within one request. A higher cultural rank cannot override a wrong city.” |
-| 1:15–1:35 | Repair attempt / mandatory checklist | “One replacement is audited again. Identity needs a second source; clicking the provider's own candidate is not independent corroboration. This successful example is labelled SYNTHETIC.” |
-| 1:35–1:55 | Revalidation / trace / source link | “Every decision comes from the workflow's own findings. Follow this link to the supporting evidence record. No invented reasoning is generated afterwards.” |
-| 1:55–2:25 | Before/after, then home / Compare two valid choices | “These two authored candidates both pass the same hard constraints. The cultural ordering changes their priority; the retained set stays the same. This demonstrates the mechanism, not real preference uplift.” |
-| 2:25–2:45 | Results / honest takeaway | “The frozen synthetic holdout changes priority in six of fifty scored plans, with no retained-set change. Real recorded Qloo evidence demonstrates rejection of a high-ranked out-of-city candidate. Real verified repair and independent cultural quality uplift are not yet established.” |
+| 0:00–0:20 | Home | “AI recommendations can sound convincing while identifying the wrong venue or lacking evidence. TasteGate audits, attempts one repair and shows what it can verify.” |
+| 0:20–0:35 | Start guided demo | “This complete repair example is authored synthetic data. It makes no Qloo request.” |
+| 0:35–0:55 | Audit | “The red card names the failed hard check. UNKNOWN means missing evidence, not that a venue is wrong.” |
+| 0:55–1:20 | Repair / checks | “A replacement is audited from scratch. Identity, constraints and cultural support are separate; a second source is mandatory. This success is synthetic.” |
+| 1:20–1:40 | Compare / source / export | “Here is the before-and-after result and its supporting record. JSON export is versioned and validated.” |
+| 1:40–2:05 | Compare two valid choices | “Both authored choices pass the rules. Cultural evidence changes priority within one query, while the retained set stays the same.” |
+| 2:05–2:25 | Audit your own recommendations | “Enter a destination, interests and existing places. Missing provider evidence stays UNKNOWN; the app never substitutes a sample.” |
+| 2:25–2:45 | Results / takeaway | “The frozen synthetic holdout changes order in six of fifty scored plans, with no retained-set change. Owner-local real Qloo cases demonstrate one verified replacement and a separate rejection. Personal preference uplift is not established.” |
 
-**Recommended owner-local combined demonstration:** use the recorded NYC sample for input/identity/audit/Qloo-evidence scenes (0:20–1:15), explicitly confirm the four identities, and show the real rejected replacement. The original slot lacks established identity; the proposed replacement fails geography. Then return home and start the synthetic guided repair for scenes 1:15–1:55, followed by before/after and the separate valid-choice example. Each run keeps its own mode and report. Explain the switch: “The real case demonstrates rejection. The successful repair is authored synthetic data.” Never call the combined story a real success.
+## Primary recorded variant — owner-local / permission required
 
-This local combined variant uses the existing recorded-sample selector and five-screen flow. Do not show or record provider-derived screens publicly until display terms are approved. The public-safe storyboard above uses synthetic evidence and public aggregates only.
+Install the owner's admitted evidence/references only in a permitted recorded-local/development profile on loopback, with live disabled. Keep credentials absent in recorded-local; an existing .env.local must not inject one. Never copy private files into a public image.
 
-Failure states: unavailable private evidence stays unavailable; an unresolved identity waits for confirmation; a timeout/limit failure remains explicit. Never switch modes automatically to manufacture a result.
+1. Press **Try the recorded Qloo case**: historical playback, no fresh request.
+2. Review and explicitly confirm the artist and original venue. No identity is selected by rank.
+3. Inspect the replacement's ten mandatory checks, venue/branch link, separate country corroboration and query-relative cultural support.
+4. Say: “This replacement is verified. The whole plan remains UNKNOWN because another original lacks cultural evidence. Hours, access, availability and personal liking were not checked.”
+5. Open the three-candidate pool: two are **not independently revalidated**. The ambiguous locality name does not verify boundary enforcement.
+6. Optionally show the original recorded evening sample as a **separate** rejection case. Never splice cases into a fictional successful itinerary.
 
-Current manual usability study: NOT RUN. Automated Chromium covers the guided path, both valid-choice priorities, source links, keyboard navigation and mobile layout; exact current results are in the execution report.
+Recorded exports/screenshots remain private. The public success stays labelled synthetic. [Evidence/display gate](FINAL_QLOO_EVIDENCE_STATUS.md).
+
+## Optional three-reviewer script — no outreach performed
+
+Give each reviewer a fresh public-safe session without explaining the implementation first.
+
+| Reviewer | Task | Observe |
+| --- | --- | --- |
+| A, first visitor | Explain purpose after 30 seconds; finish guide and export | Purpose, next action, synthetic label, before/after |
+| B, custom-input user | Enter a new city/place; submit incomplete input, fix it and run | Errors, retained input, honest UNKNOWN, no substituted scenario |
+| C, evidence reviewer | Inspect ambiguity/missing culture, source links and final report; repeat by keyboard/phone width | Clarification, uncertainty, focus, table scrolling, provenance |
+
+Reviewer C may inspect owner-local recorded cases only under the permitted display arrangement. Record actual participant consent, confusion, failed controls, timings and interpretation errors. Do not call scripted Chromium checks a human study.
+
+**HUMAN_USABILITY_REVIEW=NOT_RUN.** Actual engineering/browser evidence is in [the release report](FINAL_PREDEPLOYMENT_REPORT.md).

@@ -4,6 +4,10 @@ import { AuditInputSchema, InsightsPolicySchema, type AuditInput } from "../doma
 // provider data. Its lookups are answered only by the owner-approved recordings (see recorded-adapter.ts).
 export const RECORDED_SCENARIO_ID = "recorded-nyc-evening" as const;
 export const RECORDED_SCENARIO_LABEL = "NYC evening plan — audited with recorded Qloo responses";
+export const P07_SCENARIO_ID = "recorded-nyc-p07" as const;
+export const P07_SCENARIO_LABEL = "NYC cultural visit — reviewed P07 repair (recorded Qloo)";
+export const P07_INSIGHTS_POLICY = Object.freeze(InsightsPolicySchema.parse({
+  signal_scope:"first_confirmed_artist",discovery_take:3,discovery_exclusion:"client",discovery_profile:"p07-nyc-v1" }));
 // Trusted host policy matching the single recorded Insights context (P05): only the confirmed artist
 // signal, no tag or geography parameters, take=1, exclusions applied by TasteGate after the response.
 export const RECORDED_INSIGHTS_POLICY = Object.freeze(InsightsPolicySchema.parse({
@@ -29,3 +33,10 @@ const input: AuditInput = {
   ],
 };
 export function getRecordedScenarioInput(): AuditInput { return AuditInputSchema.parse(structuredClone(input)); }
+export function getP07ScenarioInput(): AuditInput {
+  const next = getRecordedScenarioInput();
+  next.preferences = next.preferences.slice(0,1);
+  next.task = "Audit a New York cultural-visit plan using the reviewed Radiohead signal. Opening hours, access and personal liking are not verified.";
+  next.recommendations = next.recommendations.map((r) => ({...r,claims:[]}));
+  return AuditInputSchema.parse(next);
+}

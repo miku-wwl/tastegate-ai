@@ -1,10 +1,48 @@
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 // The judge path in real Chromium against the production build: understand it in 30 seconds, walk the 2-minute guided demo, see the
 // two repair questions and the decision trace, then the paired evaluation with its honest null result. Only the authored synthetic
 // scenario is used, so nothing here depends on, or can show, any private or provider data.
 const PUBLIC_SHOTS = process.env.TASTEGATE_PUBLIC_SCREENSHOT_DIR ?? ".artifacts/screens";
+test("the primary custom action moves focus to the real form without starting an audit",async({page})=>{
+ const g=guard(page);await page.goto("/");
+ await page.getByRole("button",{name:"Audit your own recommendations",exact:true}).click();
+ await expect(page.getByRole("radio",{name:"Your own plan"})).toBeChecked();
+ await expect(page.getByRole("heading",{name:"What should the gate audit?"})).toBeFocused();
+ await page.getByRole("button",{name:"Run the gate",exact:true}).click();
+ await expect(page.getByRole("alert").first()).toContainText("Check your input");
+ expect(g.external).toEqual([]);expect(g.errors).toEqual([]);
+});
+test("the home skip link moves keyboard focus into the main content",async({page})=>{
+ await page.goto("/");
+ await page.getByRole("button",{name:"Start the 2-minute guided demo",exact:true}).waitFor();
+ await page.keyboard.press("Tab");await expect(page.getByRole("link",{name:"Skip to the content"})).toBeFocused();
+ await page.keyboard.press("Enter");await expect(page.locator("main")).toBeFocused();
+});
+test("a malformed successful response is refused and the guided demo can recover",async({page})=>{
+ await page.goto("/");
+ const fake=async(route:import("@playwright/test").Route)=>route.request().method()==="POST"?
+   route.fulfill({status:200,contentType:"application/json",body:'{"final_status":"PASS"}'}):route.continue();
+ await page.route("**/api/audit",fake);
+ await page.getByRole("button",{name:"Start the 2-minute guided demo"}).click();
+ await expect(page.getByRole("alert").filter({hasText:"The report could not be verified"})).toBeVisible();
+ await expect(page.getByRole("heading",{name:"Before and after"})).toHaveCount(0);
+ await page.unroute("**/api/audit",fake);
+ await page.getByRole("button",{name:"Start the 2-minute guided demo"}).click();
+ await expect(page.getByRole("heading",{name:"Audit: what holds up"})).toBeFocused();
+});
+test("the guided result downloads a versioned report with before, after and provenance",async({page})=>{
+ await page.goto("/");await page.getByRole("button",{name:"Start the 2-minute guided demo"}).click();
+ for(let i=0;i<2;i++)await page.getByTestId("guide-card").getByRole("button",{name:"Next",exact:true}).click();
+ const pending=page.waitForEvent("download");await page.getByRole("button",{name:"Download the validated report (JSON)"}).click();
+ const download=await pending,path=await download.path();expect(path).not.toBeNull();
+ const report=JSON.parse(await readFile(path!,"utf8"));
+ expect(report.schema_revision).toBe("tastegate.report.v1b");expect(report.source_mode).toBe("fixture");
+ expect(report.original_audits.length).toBeGreaterThan(0);expect(report.repairs[0].accepted).toBe(true);
+ expect(report.evidence.length).toBeGreaterThan(0);expect(report.usage.qloo_dispatches).toBe(0);
+});
 function guard(page: Page) {
   const external: string[] = []; const errors: string[] = [];
   void page.route("**/*", async (route) => { const url = new URL(route.request().url()); if (url.hostname !== "127.0.0.1") { external.push(url.origin); await route.abort(); } else await route.continue(); });
@@ -91,6 +129,9 @@ test("a phone-width screen has no horizontal scroll through the guided demo", as
   await page.getByRole("button", { name: "Start the 2-minute guided demo" }).click(); await expect(page.getByTestId("guide-card")).toBeVisible();
   for (const label of ["Next", "Next"]) { expect(await culprits(page)).toEqual([]); expect(await overflows(page)).toBe(false); await page.getByTestId("guide-card").getByRole("button", { name: label, exact: true }).click(); }
   await expect(page.getByTestId("decision-trace")).toBeVisible();
+  await page.getByText("Inspect the validated report JSON",{exact:true}).click();
+  const json=page.getByTestId("report-json");await expect(json).toBeVisible();await json.focus();await expect(json).toBeFocused();
+  expect(await json.evaluate(el=>el.scrollWidth>el.clientWidth)).toBe(true);
   // The wide trace table scrolls inside its own container, never the page.
   expect(await overflows(page)).toBe(false); expect(g.external).toEqual([]); expect(g.errors).toEqual([]);
 });

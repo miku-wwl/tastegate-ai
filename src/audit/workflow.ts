@@ -193,7 +193,7 @@ async function execute(engine: Engine, rawInput: unknown, options: AuditOptions)
     }
     if (basis === "user_confirmation") add("IDENTITY_USER_CONFIRMED", "uncertainty", "pass", [inputRef], "You confirmed this venue from the provider's candidate details; no independent lookup or official reference was available. That is your decision, not a second source, so it cannot make the repair verified.");
     if (basis === "official_public_reference" && repair?.reference) add("IDENTITY_OFFICIAL_REFERENCE", "uncertainty", "pass", [repair.discovery.ref],
-      `A page from ${repair.reference.publisher}, reviewed by the owner, names this venue, city and country and agrees with the provider record.`);
+      `An official reference from ${repair.reference.publisher}, registered by the trusted host, corroborates this venue, city and country and agrees with the provider record.`);
     if (repair?.reference && referenceConflicts(repair.reference, repair.proposed)) add("FACT_CONFLICT", "integrity", "fail", [repair.discovery.ref],
       "The reviewed official page contradicts the provider's record for this identity (name, city or country). The replacement is rejected.");
     // Taste evidence: the common-set ranking when it returned the entity; for a replacement only, otherwise the position
@@ -284,7 +284,8 @@ async function execute(engine: Engine, rawInput: unknown, options: AuditOptions)
     let proposals: Entity[] = [];
     if (capacity >= 1) {
       const request = providerEngine === null ? { ...signals, exclude_entity_ids: originalIds } : { ...insights, exclude_entity_ids: originalIds,
-        signal_scope: providerEngine.insightsPolicy.signal_scope, take: providerEngine.insightsPolicy.discovery_take, exclusion: providerEngine.insightsPolicy.discovery_exclusion };
+        signal_scope: providerEngine.insightsPolicy.signal_scope, take: providerEngine.insightsPolicy.discovery_take, exclusion: providerEngine.insightsPolicy.discovery_exclusion,
+        ...(providerEngine.insightsPolicy.discovery_profile ? { discovery_profile: providerEngine.insightsPolicy.discovery_profile } : {}) };
       const found = await call("Retrieve", { kind: "discover_places", ...request }, (ctx) => adapter.discoverPlaces(request, ctx));
       if (found.snapshot.kind === "discover_places") { discovery = { snapshot: found.snapshot, ref: found.evidence_id }; proposals = found.snapshot.candidates.slice(0, capacity); }
       else discovery = null;
@@ -341,7 +342,7 @@ async function execute(engine: Engine, rawInput: unknown, options: AuditOptions)
     "RECORDED LIVE: actual Qloo API responses, each captured once under a separate owner approval, replayed from private storage. No new Qloo request was made." :
     "AUTHORIZED LIVE: fresh Qloo requests made under a time-boxed owner grant, each recorded in a private ledger. The report contains only normalized, validated fields.";
   return validateProviderReport({
-    schema_revision: "tastegate.report.v2b", source_mode: provider, scenario_id: providerEngine!.scenarioId, ...common,
+    schema_revision: providerEngine!.insightsPolicy.discovery_profile === "p07-nyc-v1" ? "tastegate.report.v2c" : "tastegate.report.v2b", source_mode: provider, scenario_id: providerEngine!.scenarioId, ...common,
     insights_policy: providerEngine!.insightsPolicy, confirmations, preference_resolution: preferenceResolution,
     pending_confirmations: [...blockingConfirmations(), ...pendingReplacementConfirmations(repairs, decisions)], evidence,
     limitations: [origin,

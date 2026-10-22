@@ -9,6 +9,8 @@ import { toPublicResults } from "../src/eval/publish";
 import { evaluate, STRATA, summarizePaired } from "../src/eval/report";
 import { loadRecordedEvidence } from "../src/qloo/recorded-adapter";
 import { evaluateIndependentFacts } from "../src/eval/independent-facts";
+import { existsSync } from "node:fs";
+import { evaluateP07Product } from "../src/eval/p07-product";
 
 // Reproducible evaluation run (`npm run eval`). Strata are summarized separately and never pooled. Every plan is put through
 // the gate AND two baselines on the same evidence. RECORDED_LIVE runs only where the owner's verified private recordings
@@ -24,11 +26,14 @@ it("evaluates every stratum separately, pairs the gate with two baselines and re
   const independent_facts = referenceReport && referenceReport.source_mode === "recorded_live" ? evaluateIndependentFacts(referenceReport) :
     { status: "NOT RUN", reason: "Owner-private recordings unavailable." };
   const git = (args: string[]) => { try { return execFileSync("git", args, { encoding: "utf8" }).trim(); } catch { return "UNAVAILABLE"; } };
+  const p07_product = existsSync("private/venue-references/registry.json") ? await evaluateP07Product(process.cwd()) :
+    {status:"NOT_RUN" as const,reason:"Owner-private admitted P07/reference evidence unavailable."};
+  if(p07_product.status==="RUN"){expect(p07_product.valid_repairs).toBe(1);expect(p07_product.usage.qloo_dispatches).toBe(0);}
   const record = { evidence_kind: "ACTUAL_LOCAL_EVALUATION_RUN", executed_at_utc: new Date().toISOString(), node: process.version,
     base_commit: git(["rev-parse", "HEAD"]), working_tree_dirty: git(["status", "--porcelain"]) !== "", holdout_seed: HOLDOUT_SEED,
     recorded_evidence: recordings ? "VERIFIED_PRIVATE_RECORDINGS_AVAILABLE" : "UNAVAILABLE_IN_THIS_ENVIRONMENT",
     caveat: "Development cases shaped the gate and are not a benchmark. The seeded holdout is synthetic: it shows constructed failure patterns are handled, not that real recommendations behave this way. No live Qloo request was made. Latency is local in-process time only.",
-    summary, comparison, results, independent_facts };
+    summary, comparison, results, independent_facts, p07_product };
   await mkdir(".artifacts", { recursive: true });
   await mkdir(".artifacts/evaluation", { recursive: true });
   const directory = await mkdtemp(join(".artifacts/evaluation", record.executed_at_utc.replace(/[:.]/g, "-") + "-"));

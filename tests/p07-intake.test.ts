@@ -22,7 +22,7 @@ async function authoredCapture() {
 describe("P07 offline intake of authored transport records only", () => {
   it("reports no attempt without reading or inventing a provider body", async () => {
     const s = await seedP07(); roots.push(s.root);
-    expect(await inspectP07Capture(s.root)).toEqual({ probe: "P07", replay: "NOT_ENABLED", real_repair: "NOT_ESTABLISHED", status: "NOT_EXECUTED" });
+    expect(await inspectP07Capture(s.root)).toEqual({ probe: "P07", replay: "NOT_GRANTED_BY_INTAKE", real_repair: "NOT_ASSESSED_BY_INTAKE", status: "NOT_EXECUTED" });
   });
   it("never represents a test-double capture as real provider evidence", async () => {
     const s = await authoredCapture(); expect((await inspectP07Capture(s.root)).status).toBe("TEST_DOUBLE_ONLY");
@@ -32,7 +32,7 @@ describe("P07 offline intake of authored transport records only", () => {
     const json = JSON.parse(await readFile(path, "utf8")); json.summary.source_mode = "live_probe";
     await writeFile(path, JSON.stringify(json)); // authored metadata branch, not a real API observation
     const result = await inspectP07Capture(s.root);
-    expect(result.status).toBe("CAPTURED_AWAITING_SCHEMA_REVIEW"); expect(result.replay).toBe("NOT_ENABLED");
+    expect(result.status).toBe("CAPTURED_TRANSPORT_VALIDATED"); expect(result.replay).toBe("NOT_GRANTED_BY_INTAKE");
     const printed = JSON.stringify(result);
     expect(printed).not.toContain(s.cp.signal_entity_id); expect(printed).not.toContain(s.cp.request_sha256);
     await writeFile(join(s.dir, "response.raw.json"), "{}");

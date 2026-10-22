@@ -3,6 +3,8 @@ import { sendNative } from "../../../src/qloo/live-transport";
 import { QlooServerConfig } from "../../../src/qloo/server-config";
 import { createAuditService } from "../../../src/server/audit-service";
 import { resolveRuntimeProfile } from "../../../src/server/runtime-profile";
+import { loadP07Recordings } from "../../../src/qloo/p07-recording";
+import { loadOfficialReferences } from "../../../src/qloo/official-reference-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +17,8 @@ const resolved = resolveRuntimeProfile(process.env);
 const service = createAuditService({
   projectRoot: process.cwd(),
   recordings: () => resolved.capabilities.recorded_replay ? loadRecordedEvidence(process.cwd()) : Promise.reject(new RecordedEvidenceUnavailableError()),
+  p07Recordings: () => resolved.capabilities.recorded_replay ? loadP07Recordings(process.cwd()) : Promise.reject(new RecordedEvidenceUnavailableError()),
+  officialReferences: () => resolved.capabilities.recorded_replay ? loadOfficialReferences(process.cwd(), ["www.guggenheim.org","whc.unesco.org"]) : Promise.resolve(new Map()),
   liveConfig: () => QlooServerConfig.load(),
   send: sendNative,
   // TASTEGATE_DISABLE_LIVE=1 is an additional operator kill switch on top of the profile (public deployments, automated browser tests).

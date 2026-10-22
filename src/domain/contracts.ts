@@ -57,6 +57,7 @@ export const InsightsPolicySchema = z.strictObject({
   signal_scope: z.enum(["all_confirmed", "first_confirmed_artist"]),
   discovery_take: z.number().int().min(1).max(5),
   discovery_exclusion: z.enum(["server", "client"]),
+  discovery_profile: z.literal("p07-nyc-v1").optional(),
 });
 export type InsightsPolicy = z.infer<typeof InsightsPolicySchema>;
 
@@ -81,6 +82,7 @@ const DiscoveryOptions = {
   signal_scope: InsightsPolicySchema.shape.signal_scope.optional(),
   take: InsightsPolicySchema.shape.discovery_take.optional(),
   exclusion: InsightsPolicySchema.shape.discovery_exclusion.optional(),
+  discovery_profile: InsightsPolicySchema.shape.discovery_profile,
 };
 const UnavailableRequestSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("entity_lookup"), ...LookupRequestSchema }),
@@ -168,7 +170,7 @@ export type Evidence = z.infer<typeof EvidenceSchema>;
 // manifests (P01-P06). AUTHORIZED_LIVE: a fresh request made under an owner-created grant, tied to a private ledger
 // record. The two are never interchangeable and a report may contain only one of them.
 export const CaptureSchema = z.strictObject({
-  probe: z.enum(["P01", "P02", "P03R", "P04", "P05", "P06", "LIVE"]), attempt_id: z.uuid(),
+  probe: z.enum(["P01", "P02", "P03R", "P04", "P05", "P06", "P07", "LIVE"]), attempt_id: z.uuid(),
   endpoint: z.enum(["/search", "/v2/tags", "/v2/insights"]), profile_revision: text(120),
   recorded_at: z.iso.datetime(), http_status: z.literal(200),
   response_bytes: z.number().int().min(1).max(262_144),
@@ -252,7 +254,9 @@ export const PublicReferenceSchema = z.strictObject({
   source: z.literal("OFFICIAL_PUBLIC_REFERENCE"), publisher: text(120),
   url: z.string().max(300).refine((v) => { try { const u = new URL(v); return u.protocol === "https:" && !u.username && !u.password && !u.hash; } catch { return false; } }, "An https URL without credentials is required"),
   asserted_name: text(200), asserted_city: text(100), asserted_country: z.string().regex(/^[A-Z]{2}$/),
-  reviewed_utc: z.iso.datetime(), review_basis: z.literal("OWNER_REVIEW_OF_PUBLIC_PAGE"), content_sha256: fingerprint,
+  reviewed_utc: z.iso.datetime(), review_basis: z.enum(["OWNER_REVIEW_OF_PUBLIC_PAGE", "AUTHORIZED_HOST_REVIEW_OF_PUBLIC_PAGE"]), content_sha256: fingerprint,
+  country_reference: z.strictObject({ publisher: text(120), url: z.url().max(300).refine((v) => { const u = new URL(v); return u.protocol === "https:" && !u.username && !u.password && !u.search && !u.hash; }),
+    content_sha256: fingerprint, reviewed_utc: z.iso.datetime() }).optional(),
 });
 export type PublicReference = z.infer<typeof PublicReferenceSchema>;
 export const RepairSchema = z.strictObject({
@@ -330,7 +334,7 @@ export const PendingConfirmationSchema = z.strictObject({
 });
 export type PendingConfirmation = z.infer<typeof PendingConfirmationSchema>;
 export const ProviderReportShapeSchema = z.strictObject({
-  schema_revision: z.literal("tastegate.report.v2b"), source_mode: ProviderModeSchema, scenario_id: id,
+  schema_revision: z.enum(["tastegate.report.v2b","tastegate.report.v2c"]), source_mode: ProviderModeSchema, scenario_id: id,
   ...reportCommon, insights_policy: InsightsPolicySchema, confirmations: ConfirmationsSchema,
   preference_resolution: z.array(PreferenceResolutionSchema).min(1).max(3),
   pending_confirmations: z.array(PendingConfirmationSchema).max(9),

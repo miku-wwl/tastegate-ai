@@ -18,6 +18,8 @@ const isEntityLookup = (s: Snapshot | undefined) => s?.kind === "entity_lookup" 
 function validateGraph(r: Shape, reject: (message: string) => void): void {
   const mode = r.source_mode; const provider = r.source_mode === "fixture" ? null : r;
   const evidence: Shape["evidence"][number][] = r.evidence;
+  if (provider && ((provider.insights_policy.discovery_profile === "p07-nyc-v1") !== (provider.schema_revision === "tastegate.report.v2c")))
+    reject("Report revision does not match the reviewed P07 profile");
   const ev = new Map(evidence.map((e) => [e.evidence_id, e]));
   const snap = (ref: string | null | undefined) => ref ? ev.get(ref)?.snapshot : undefined;
   const indexOf = (ref: string | null | undefined) => evidence.findIndex((e) => e.evidence_id === ref);
@@ -117,7 +119,8 @@ function validateGraph(r: Shape, reject: (message: string) => void): void {
       reject("Ranking signal context mismatch");
     const discovery = s.kind === "discover_places" ? s : request?.operation === "discover_places" ? request : null;
     if (discovery && (provider ? discovery.signal_scope !== provider.insights_policy.signal_scope || discovery.take !== provider.insights_policy.discovery_take ||
-        discovery.exclusion !== provider.insights_policy.discovery_exclusion : discovery.signal_scope !== undefined || discovery.take !== undefined || discovery.exclusion !== undefined))
+        discovery.exclusion !== provider.insights_policy.discovery_exclusion || discovery.discovery_profile !== provider.insights_policy.discovery_profile :
+        discovery.signal_scope !== undefined || discovery.take !== undefined || discovery.exclusion !== undefined || discovery.discovery_profile !== undefined))
       reject("Discovery request contradicts the trusted Insights policy");
     if (s.kind === "rank_places") {
       const sameSet = s.ordered_entity_ids.length === s.candidate_entity_ids.length;

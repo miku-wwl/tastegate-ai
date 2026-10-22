@@ -19,7 +19,7 @@ export const CatalogSchema = z.strictObject({
   modes: z.strictObject({ synthetic: z.literal("AVAILABLE"), recorded_live: z.enum(["AVAILABLE", "UNAVAILABLE"]), live: z.enum(["LOCKED", "AVAILABLE"]) }),
   scenarios: z.array(z.strictObject({ id: text(64), label: text(120), mode: z.enum(["fixture", "recorded_live"]), available: z.boolean(), input: AuditInputSchema })).max(12),
   recorded_history: z.array(z.strictObject({
-    probe: z.enum(["P01", "P02", "P03", "P03R", "P04", "P05", "P06"]), attempt_id: z.uuid(), endpoint: z.enum(["/search", "/v2/tags", "/v2/insights"]),
+    probe: z.enum(["P01", "P02", "P03", "P03R", "P04", "P05", "P06", "P07"]), attempt_id: z.uuid(), endpoint: z.enum(["/search", "/v2/tags", "/v2/insights"]),
     recorded_at: z.iso.datetime().nullable(), http_status: z.number().int().min(100).max(599).nullable(), outcome: z.enum(RECORDED_OUTCOMES),
     response_bytes: z.number().int().min(0).max(262_145).nullable(), shortlist_class: z.enum(SHORTLIST_CLASSES).optional(),
   })).max(12),

@@ -249,8 +249,9 @@ try { await main(); }
 catch (error) { record("gate execution", "FAIL", error instanceof Error ? error.message : "error"); }
 finally { cleanup(); }
 const summary = { PASS: 0, FAIL: 0, "NOT RUN": 0 }; for (const c of checks) summary[c.status]++;
-mkdirSync(join(project, ".artifacts"), { recursive: true });
-writeFileSync(join(project, ".artifacts", selfTest ? "deploy-safety-selftest.json" : "deploy-safety-report.json"), JSON.stringify({ evidence_kind: selfTest ? "ACTUAL_DEPLOY_SAFETY_SELF_TEST" : "ACTUAL_DEPLOY_SAFETY_RUN",
+const reportDir = resolve(project, process.env.TASTEGATE_VERIFICATION_OUTPUT_DIR ?? ".artifacts");
+mkdirSync(reportDir, { recursive: true });
+writeFileSync(join(reportDir, selfTest ? "deploy-safety-selftest.json" : "deploy-safety-report.json"), JSON.stringify({ evidence_kind: selfTest ? "ACTUAL_DEPLOY_SAFETY_SELF_TEST" : "ACTUAL_DEPLOY_SAFETY_RUN",
   executed_at_utc: new Date().toISOString(), node: process.version, base_commit: git(["rev-parse", "HEAD"]).trim(), working_tree_dirty: git(["status", "--porcelain"]).trim() !== "",
   canaries: "synthetic, generated per run, never recorded here", footprint: { ...footprint, server_rss_mb: sizing, note: "measured on the development machine, not a target host" }, summary, checks }, null, 2) + "\n");
 process.stdout.write(`\n${summary.PASS} passed, ${summary.FAIL} failed, ${summary["NOT RUN"]} not run\n`);

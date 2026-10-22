@@ -58,6 +58,9 @@ export function RepairAssessmentView({ report, repair }: { report: AnyAuditRepor
       <span className={`pill tone-${identity[a.identity_corroboration].tone}`}>Identity: {identity[a.identity_corroboration].label}</span>
       {a.synthetic_success && <span className="pill tone-synthetic">SYNTHETIC SUCCESS · authored data</span>}
     </p>
+    {repair.corroboration && <p className="small">Independent sources: <a href={repair.corroboration.url} target="_blank" rel="noopener noreferrer">Venue identity and branch</a>
+      {repair.corroboration.country_reference && <> · <a href={repair.corroboration.country_reference.url} target="_blank" rel="noopener noreferrer">Country corroboration</a></>}
+      {" "}· trusted host review {repair.corroboration.reviewed_utc.slice(0,10)}. No opening-hours or availability check.</p>}
     <details><summary>Mandatory evidence ({met} of {a.checklist.length} met){a.first_unmet ? ` · first gap: ${CHECKLIST_LABEL[a.first_unmet]}` : ""}</summary>
       <ul className="subchecks">{a.checklist.map((c) => <li key={c.item} className={`check tone-${TONE[c.state]}`}><span className="check-name"><span aria-hidden="true">{SYMBOL[c.state]}</span> {CHECKLIST_LABEL[c.item]}</span><span className="check-text">{c.note}</span></li>)}</ul>
       <p className="muted small">A high Qloo ranking never overrides a failed hard check or an unestablished identity: affinity is not an input to any hard check.</p>

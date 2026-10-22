@@ -48,6 +48,8 @@ if (ready) try {
   record("a synthetic scenario audits correctly", fixture.status === 200 && fixtureBody.source_mode === "fixture" && fixtureBody.final_status === "PASS", `status ${fixture.status}`);
   const recorded = await post(base, { scenario: "recorded-nyc-evening" }); const recordedBody = await recorded.json();
   record("the recorded scenario is refused as unavailable", recorded.status === 503 && recordedBody.error === "RECORDED_EVIDENCE_UNAVAILABLE", `status ${recorded.status}`);
+  const p07 = await post(base,{scenario:"recorded-nyc-p07"}),p07Body=await p07.json();
+  record("the P07 recorded scenario is refused without loading private evidence",p07.status===503&&p07Body.error==="RECORDED_EVIDENCE_UNAVAILABLE",`status ${p07.status}`);
   const live = await post(base, { scenario: "recorded-nyc-evening", source: "live", live_ack: "RUN_LIVE_QLOO_REQUESTS" }); const liveBody = await live.json();
   record("a live request with the acknowledgement is refused (profile)", live.status === 403 && liveBody.error === "LIVE_UNAVAILABLE" && liveBody.reason === "LIVE_DISABLED", `status ${live.status}`);
   const custom = await post(base, { input: { schema_revision: "tastegate.input.v0", preferences: [{ id: "p", text: "x", kind: "artist", confirmed_anchor: "x" }], task: "t", destination: "d",
@@ -60,11 +62,23 @@ if (ready) try {
   record("the server stays healthy after a burst of audits", (await fetch(base + "/api/health")).status === 200);
 } catch (error) { record("smoke checks", false, error instanceof Error ? error.message : "error"); }
 child.kill(); await new Promise((r) => setTimeout(r, 400));
+let closed=false;try{await fetch(base+"/api/health",{signal:AbortSignal.timeout(500)});}catch{closed=true;}
+record("shutdown releases the listening port",closed);
+const restarted=spawn(process.execPath,[start],{cwd:project,env:cleanEnv({PORT:String(port),HOSTNAME:"127.0.0.1"}),stdio:["ignore","pipe","pipe"]});
+restarted.stdout.on("data",grab);restarted.stderr.on("data",grab);
+let recovered=false;
+for(let i=0;i<30&&!recovered;i++){
+ try{const h=await(await fetch(base+"/api/health",{signal:AbortSignal.timeout(500)})).json();recovered=h.status==="ok"&&h.profile==="production-safe"&&h.live==="DISABLED_BY_PROFILE"&&h.recorded_replay==="DISABLED_BY_PROFILE";}catch{}
+ if(!recovered)await new Promise(r=>setTimeout(r,100));
+}
+record("restart on the same port recovers the default safe profile",recovered);
+restarted.kill();await new Promise(r=>setTimeout(r,400));
 record("the server's own output names no secret", !/QLOO_API_KEY|X-Api-Key/.test(log), "unexpected output");
 
-mkdirSync(join(project, ".artifacts"), { recursive: true });
+const reportDir = resolve(project, process.env.TASTEGATE_VERIFICATION_OUTPUT_DIR ?? ".artifacts");
+mkdirSync(reportDir, { recursive: true });
 const summary = { PASS: checks.filter((c) => c.status === "PASS").length, FAIL: checks.filter((c) => c.status === "FAIL").length };
-writeFileSync(join(project, ".artifacts", "smoke-production.json"), JSON.stringify({ evidence_kind: "ACTUAL_LOCAL_PRODUCTION_SMOKE", executed_at_utc: new Date().toISOString(), node: process.version,
+writeFileSync(join(reportDir, "smoke-production.json"), JSON.stringify({ evidence_kind: "ACTUAL_LOCAL_PRODUCTION_SMOKE", executed_at_utc: new Date().toISOString(), node: process.version,
   note: "measured on the development machine; not a statement about any target host", sizing, summary, checks }, null, 2) + "\n");
 process.stdout.write(`\n${summary.PASS} passed, ${summary.FAIL} failed. Memory (RSS) ${sizing.rss_idle_mb ?? "?"} MB idle, ${sizing.rss_after_mb ?? "?"} MB after ${sizing.audits} audits.\n`);
 process.exitCode = summary.FAIL ? 1 : 0;

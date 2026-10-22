@@ -10,20 +10,21 @@
 # are absent from the build context (see .dockerignore) and refused at start-up if present in the environment. To change the base image,
 # pin it by digest at release time: a tag can move, a digest cannot.
 ARG NODE_VERSION=24
+ARG NODE_IMAGE_DIGEST=sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 
-FROM node:${NODE_VERSION}-alpine AS deps
+FROM node:${NODE_VERSION}-alpine@${NODE_IMAGE_DIGEST} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 
-FROM node:${NODE_VERSION}-alpine AS build
+FROM node:${NODE_VERSION}-alpine@${NODE_IMAGE_DIGEST} AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1 TASTEGATE_STANDALONE=1 NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p public && npm run build
 
-FROM node:${NODE_VERSION}-alpine AS runner
+FROM node:${NODE_VERSION}-alpine@${NODE_IMAGE_DIGEST} AS runner
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 \
     TASTEGATE_PROFILE=production-safe TASTEGATE_DISABLE_LIVE=1
 WORKDIR /app

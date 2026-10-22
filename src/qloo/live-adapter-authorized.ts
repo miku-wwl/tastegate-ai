@@ -172,7 +172,7 @@ function createAdapter(ctx: { run: LiveRunHandle; grant: LiveGrant; headers: Rea
       const req = { operation: "discover_places" as const, ...request };
       const signal = rawOf(request.preference_entity_ids);
       // Only the reviewed context exists: one artist signal, no tags or geography, exclusions applied by TasteGate.
-      if (request.preference_tag_ids.length || request.preference_entity_ids.length !== 1 || !signal || request.exclusion !== "client" || request.signal_scope !== "first_confirmed_artist" ||
+        if (request.discovery_profile || request.preference_tag_ids.length || request.preference_entity_ids.length !== 1 || !signal || request.exclusion !== "client" || request.signal_scope !== "first_confirmed_artist" ||
           !request.take || request.take < 1 || request.take > 5)
         return unavailable(req, "NOT_CAPTURED", "Only artist-signal discovery without geography is supported. Nothing was sent.");
       const requestTake = Math.min(request.take + request.exclude_entity_ids.length, 10);

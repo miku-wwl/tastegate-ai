@@ -7,6 +7,7 @@ import { LIVE_ACK } from "../src/domain/protocol";
 import { clientIssues, emptyForm, formToInput, type FieldIssue, type FormState } from "./custom-form";
 import { describeProblem, type RunProblem } from "./run-errors";
 import { GuideCard, HowItWorks } from "./screens/guide";
+import { AuditReportSchema, ProviderAuditReportSchema } from "../src/domain/report-schema";
 import { InputScreen, type Plan, type Source } from "./screens/input-screen";
 import { AuditScreen, CompareScreen, IdentityScreen, RepairScreen } from "./screens/result-screens";
 import { SCREENS, isProvider, reachableScreens, screenAfterRun, statusText, type Screen } from "./view-model";
@@ -32,7 +33,7 @@ export default function TasteGateApp() {
     fetch("/api/audit", { cache: "no-store" }).then((r) => r.ok ? r.json() : Promise.reject(new Error())).then((c: unknown) => {
       if (!mounted) return;
       if (!isCatalog(c)) throw new Error();
-      setCatalog(c); setPlan({ kind: "scenario", id: c.scenarios.find((s) => s.mode === "recorded_live" && s.available)?.id ?? "nyc-evening" });
+      setCatalog(c);
     }).catch(() => { if (mounted) setCatalogFailed(true); });
     return () => { mounted = false; };
   }, []);
@@ -52,7 +53,11 @@ export default function TasteGateApp() {
         const detail = await response.json().catch(() => null) as unknown; const next = describeProblem(response.status, detail); setProblem(next);
         if (next.issues.length) setFormIssues(next.issues); return;
       }
-      const next = await response.json() as AnyAuditReport; setReport(next); setRunBody(body); setFormIssues([]); setScreen(after(next));
+      const raw: unknown = await response.json();
+      const fixture = AuditReportSchema.safeParse(raw);
+      const validated = fixture.success ? fixture : ProviderAuditReportSchema.safeParse(raw);
+      if (!validated.success) { setProblem({ title: "The report could not be verified", message: "The server returned an invalid report. No result was accepted. You can try again.", issues: [] }); return; }
+      const next = validated.data; setReport(next); setRunBody(body); setFormIssues([]); setScreen(after(next));
     } catch { setProblem(describeProblem(0, null)); }
     finally { setBusy(false); }
   }
@@ -83,6 +88,15 @@ export default function TasteGateApp() {
     setPlan({ kind: "scenario", id: sample.id }); setSource("recorded"); setLiveAck(false); setReport(null); setGuided(false);
     void post({ scenario: sample.id }, undefined, () => 5);
   }
+  function startCustom() {
+    choosePlan({ kind: "custom" }); setSource("recorded"); setGuided(false); setScreen(1);
+    requestAnimationFrame(() => heading.current?.focus());
+  }
+  function startRecordedDemo() {
+    const sample=catalog?.scenarios.find(s=>s.id==="recorded-nyc-p07"&&s.available);if(!sample)return;
+    setPlan({kind:"scenario",id:sample.id});setSource("recorded");setLiveAck(false);setReport(null);setGuided(false);
+    void post({scenario:sample.id,source:"recorded"},undefined,screenAfterRun);
+  }
 
   const live = catalog?.live_gate.status === "AVAILABLE";
   return <>
@@ -96,13 +110,14 @@ export default function TasteGateApp() {
         <li className={`badge tone-${live ? "live" : "locked"}`}>LIVE: {live ? "ready (owner grant)" : "locked"}</li>
       </ul>
     </header>
-    <main id="main">
+    <main id="main" tabIndex={-1}>
       {screen === 1 && <section className="hero">
         <p className="eyebrow">The cultural quality gate for AI agents</p>
         <h1>Don’t just generate recommendations.<br /><span className="hero-accent">Audit them, repair them, verify the evidence.</span></h1>
         <p className="lede">TasteGate checks an AI agent’s plan against Qloo taste data and your hard constraints, repairs only what fails, and re-checks every replacement.
           When it cannot prove something, it says so.</p>
-        <HowItWorks onStartGuide={catalog ? startGuided : undefined} onStartPriority={catalog ? startPriorityDemo : undefined} busy={busy} />
+        <HowItWorks onStartGuide={catalog ? startGuided : undefined} onStartPriority={catalog ? startPriorityDemo : undefined} onCustom={catalog ? startCustom : undefined}
+          onStartRecorded={catalog?.scenarios.some(s=>s.id==="recorded-nyc-p07"&&s.available)?startRecordedDemo:undefined} busy={busy} />
       </section>}
 
       <nav className="stepper" aria-label="Progress"><ol>{SCREENS.map((s) => {
@@ -113,7 +128,8 @@ export default function TasteGateApp() {
 
       <div role="status" aria-live="polite" className="status-line">{busy ? "Running the bounded audit…" : report ? statusText(report) : problem ? "" : "Choose a plan and run the gate."}</div>
 
-      {catalogFailed && <p role="alert" className="alert">The scenario catalog could not be loaded. No result has been substituted.</p>}
+      {catalogFailed && <div role="alert" className="alert"><p>The scenario catalog could not be loaded. No result has been substituted.</p>
+        <button type="button" className="secondary" onClick={() => window.location.reload()}>Reload the app</button></div>}
       {!catalog && !catalogFailed && <p className="muted">Loading…</p>}
 
       {catalog && screen === 1 && <InputScreen catalog={catalog} plan={plan} onPlan={choosePlan} source={source} onSource={(s) => { setSource(s); setLiveAck(false); }} liveAck={liveAck} onLiveAck={setLiveAck}

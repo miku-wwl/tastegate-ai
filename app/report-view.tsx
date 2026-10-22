@@ -133,7 +133,9 @@ export function RepairCard({ report, repair }: { report: AnyAuditReport; repair:
   const origin = report.source_mode === "fixture" ? "synthetic discovery" : report.source_mode === "authorized_live" ? "a live Qloo Insights discovery" : "a recorded Qloo Insights discovery";
   return <div className="repair">
     <p className="repair-origin">Proposed by {origin}
-      {scope?.signal_scope === "first_confirmed_artist" && " from your confirmed artist signal only, with no geography filter"}.</p>
+      {scope?.signal_scope === "first_confirmed_artist" && (scope.discovery_profile === "p07-nyc-v1" ?
+        " from your confirmed artist signal only. NYC filtering was requested; the returned locality name is ambiguous, so each venue is checked independently" :
+        " from your confirmed artist signal only, with no geography filter")}.</p>
     <AuditCard report={report} audit={repair.revalidation} title={proposal?.entity.name ?? repair.proposed_entity_id}
       entity={proposal?.entity ?? null} claims={0} note={note} />
     <RepairAssessmentView report={report} repair={repair} />
@@ -227,7 +229,8 @@ export function Export({ report }: { report: AnyAuditReport }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <section className="export">
+    {report.source_mode !== "fixture" && report.usage.recorded_replays > 0 && <p className="small muted">Owner-local export: this report contains private recorded evidence and source fingerprints. Keep it private until display permission is confirmed.</p>}
     <button type="button" className="secondary" onClick={download}>Download the validated report (JSON)</button>
-    <details><summary>Inspect the validated report JSON</summary><pre data-testid="report-json">{JSON.stringify(report, null, 2)}</pre></details>
+    <details><summary>Inspect the validated report JSON</summary><pre data-testid="report-json" tabIndex={0} aria-label="Validated report JSON">{JSON.stringify(report, null, 2)}</pre></details>
   </section>;
 }

@@ -30,7 +30,8 @@
     "probe:p07": "node scripts/qloo-probe-p07.mjs",
     "live:grant": "node scripts/live-grant.mjs",
     "safety:deploy": "node scripts/deploy-safety.mjs",
-    "safety:deploy:selftest": "node scripts/deploy-safety.mjs --self-test"
+    "safety:deploy:selftest": "node scripts/deploy-safety.mjs --self-test",
+    "release:verify": "node scripts/release-verify.mjs"
   },
   "dependencies": {
     "next": "16.4.2",

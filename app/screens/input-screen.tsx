@@ -49,7 +49,7 @@ export function InputScreen(props: {
         <legend className="sr-only">Sample plan</legend>
         <p className="group-label">Real provider data</p>
         <div className="scenario-grid">{scenarios.filter((s) => s.mode === "recorded_live").map((s) => <ScenarioCard key={s.id} s={s} checked={s.id === plan.id} onChoose={(id) => props.onPlan({ kind: "scenario", id })}
-          note={s.available ? `Replays ${catalog.recorded_history.filter((h) => h.outcome === "REPLAYABLE").length} owner-approved Qloo responses. No new requests unless you choose LIVE.` :
+          note={s.available ? "Replays only matching, reviewed Qloo recordings. No new request is made in RECORDED mode." :
             "Unavailable on this server: the owner’s private recordings are not present."} />)}</div>
         <p className="group-label">Synthetic test scenarios</p>
         <div className="scenario-grid compact">{scenarios.filter((s) => s.mode === "fixture").map((s) => <ScenarioCard key={s.id} s={s} checked={s.id === plan.id} onChoose={(id) => props.onPlan({ kind: "scenario", id })} />)}</div>
@@ -86,7 +86,14 @@ export function InputScreen(props: {
       <span className="muted small">Validate → Resolve → Retrieve → Audit → Repair → Revalidate → Report · at most 14 bounded calls, one repair round.</span>
     </div>
 
-    <LiveCard gate={catalog.live_gate} />
+    {liveUp && <LiveCard gate={catalog.live_gate} />}
+    {!recordedUp && <aside className="panel public-evidence" aria-label="Real Qloo demo availability">
+      <h3>Two demos, two kinds of evidence</h3>
+      <p>The guided repair uses authored synthetic data. Owner-local Qloo cases replay reviewed responses: one verifies a replacement; another rejects one. They are separate demonstrations.</p>
+      <p className="small muted">Real recordings are unavailable on this server. Public display permission is still pending; synthetic success is never presented as real Qloo repair.</p>
+    </aside>}
+    <details className="technical-evidence"><summary>Technical evidence and owner controls</summary>
+    {!liveUp && <LiveCard gate={catalog.live_gate} />}
     {(catalog.recorded_history.length > 0 || catalog.pending_request) && <section className="panel history" aria-labelledby="history-title">
       <h3 id="history-title">Recorded evidence</h3>
       {catalog.pending_request && <p className="small"><strong>{catalog.pending_request.id}</strong> — {catalog.pending_request.detail}</p>}
@@ -95,6 +102,7 @@ export function InputScreen(props: {
           {catalog.recorded_history.map((h) => <tr key={h.attempt_id}><td>{h.probe}</td><td className="mono">GET {h.endpoint}</td>
             <td>{h.recorded_at ? h.recorded_at.slice(0, 16).replace("T", " ") : "—"}</td><td>{OUTCOME_TEXT[h.outcome](h.response_bytes)}</td></tr>)}</tbody></table></details>}
     </section>}
+    </details>
   </section>;
 }
 
